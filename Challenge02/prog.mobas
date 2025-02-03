@@ -1,0 +1,377 @@
+' FRIENDSHIP... a very original game for HMC CS181AR by
+' Henry Merrilees
+' Nolan Windham 
+
+' DISABLE SCROLL
+POKE 23692,255
+
+' OCEAN BACKGROUND
+BRIGHT 1: PAPER 1: CLS
+
+' === UDG === 
+
+' Ship Bow N -- CHR$ 144
+DATA 0, 24, 60, 60, 126, 126, 126, 126
+
+' Ship Middle N/S -- CHR$ 145
+DATA 126, 126, 126, 126, 126, 126, 126, 126
+
+' Ship Stern N -- CHR$ 146
+DATA 126, 126, 126, 126, 126, 126, 60, 0
+
+' Ship Bow S -- CHR$ 147
+DATA 126, 126, 126, 126, 60, 60, 24, 0
+
+' Ship Middle N/S -- CHR$ 148
+DATA 126, 126, 126, 126, 126, 126, 126, 126
+
+' Ship Stern S -- CHR$ 149
+DATA 0, 60, 126, 126, 126, 126, 126, 126
+
+' Ship Bow W -- CHR$ 150
+DATA 0, 15, 63, 127, 127, 63, 15, 0
+
+' Ship Middle W/E -- CHR$ 151
+DATA 0, 255, 255, 255, 255, 255, 255, 0
+
+' Ship Stern W -- CHR$ 152
+DATA 0, 252, 254, 254, 254, 254, 252, 0
+
+' Ship Bow E -- CHR$ 153
+DATA 0, 240, 252, 254, 254, 252, 240, 0
+
+' Ship Middle W/E -- CHR$ 154
+DATA 0, 255, 255, 255, 255, 255, 255, 0
+
+' Ship Stern E -- CHR$ 155
+DATA 0, 63, 127, 127, 127, 127, 63, 0
+
+
+FOR n=144 TO 155
+    FOR i=0 TO 7
+        READ row : POKE USR CHR$ n + i, row
+    NEXT i
+NEXT n
+
+' === SHIP SETUP ===
+
+' TODO(Nolan): allow users to set their own ships.
+
+LET P$ = "L"
+
+LET BOWX = 4
+LET BOWY = 7
+LET D$ = "W"
+LET LEN = 6
+GO SUB @PRINTSHIP
+IF ERR = 1 
+    PRINT M$
+    STOP
+ENDIF
+
+LET BOWX = 3
+LET BOWY = 8
+LET D$ = "N"
+LET LEN = 3
+GO SUB @PRINTSHIP
+IF ERR = 1 
+    PRINT M$
+    STOP
+ENDIF
+
+LET BOWX = 14
+LET BOWY = 20
+LET D$ = "E"
+LET LEN = 2
+GO SUB @PRINTSHIP
+IF ERR = 1 
+    PRINT M$
+    STOP
+ENDIF
+
+
+LET P$ = "R"
+GO SUB @SETACTIVEPLAYER
+
+LET BOWX = 25
+LET BOWY = 15
+LET D$ = "N"
+LET LEN = 5
+GO SUB @PRINTSHIP
+IF ERR = 1 
+    PRINT M$
+    STOP
+ENDIF
+
+LET BOWX = 22
+LET BOWY = 12
+LET D$ = "S"
+LET LEN = 2
+GO SUB @PRINTSHIP
+IF ERR = 1 
+    PRINT M$
+    STOP
+ENDIF
+
+LET BOWX = 17
+LET BOWY = 3
+LET D$ = "N"
+LET LEN = 4
+GO SUB @PRINTSHIP
+IF ERR = 1 
+    PRINT M$
+    STOP
+ENDIF
+
+@mainloop:
+IF P$ = "L"
+    LET P$ = "R"
+ELSE
+    LET P$ = "L"
+ENDIF
+
+GO SUB @SETACTIVEPLAYER
+GO SUB @TARGET
+
+' TODO(Nolan): implement win condition
+
+GO TO @mainloop
+
+
+' === INPUTS ===
+' P$: <"L", "R"> 
+' BOWX: [0,15]
+' BOWY: [0,11]
+' D$: <"N", "S", "E", "W">
+' LEN: [1,5] (must stay in bounds)
+' === OUT PARAMS ===
+' ERR: [0,1] (0 = success, 1 = error)
+' M$: String
+ 
+@PRINTSHIP:
+GO SUB @VALIDATEPRINT
+IF ERR = 1
+    RETURN
+ENDIF
+
+LET PX = BOWX
+LET PY = BOWY
+
+FOR F=0 TO LEN - 1
+    LET CHAR = 144
+
+    IF F = 0
+        LET CHAR = CHAR
+    ELIF F = LEN - 1
+        LET CHAR = CHAR + 2
+    ELSE
+        LET CHAR = CHAR + 1
+    ENDIF
+
+    IF D$ = "N"
+        LET CHAR = CHAR
+    ELIF D$ = "S"
+        LET CHAR = CHAR + 3
+    ELIF D$ = "W"
+        LET CHAR = CHAR + 6
+    ELIF D$ = "E"
+        LET CHAR = CHAR + 9
+    ENDIF
+
+    PRINT AT PY, PX; CHR$ CHAR
+
+    ' Move to next position based on direction
+    IF D$ = "N" THEN LET PY = PY + 1
+    IF D$ = "S" THEN LET PY = PY - 1
+    IF D$ = "E" THEN LET PX = PX - 1
+    IF D$ = "W" THEN LET PX = PX + 1
+NEXT F
+RETURN
+
+
+' Ensures that the ship parameters are within the bounds of the screen and are in ocean and are within the player's half of the screen
+@VALIDATEPRINT:
+LET ERR = 0
+LET M$ = ""
+
+' Calculate stern position based on direction and length
+LET STERNX = BOWX
+LET STERNY = BOWY
+IF D$ = "N" THEN LET STERNY = BOWY + LEN - 1
+IF D$ = "S" THEN LET STERNY = BOWY - LEN + 1
+IF D$ = "E" THEN LET STERNX = BOWX - LEN + 1
+IF D$ = "W" THEN LET STERNX = BOWX + LEN - 1
+
+' Validate basic start bounds
+IF BOWX < 0 OR BOWX > 30 OR BOWY < 0 OR BOWY > 21
+    LET ERR = 1
+    LET M$ = "SHIP START POSITION OUT OF BOUNDS"
+    RETURN
+ENDIF
+
+' Validate ship doesn't go off screen based on direction and length
+IF D$ = "N" AND STERNY > 21
+    LET ERR = 1
+    LET M$ = "SHIP EXTENDS OFF BOTTOM"
+    RETURN
+ENDIF
+IF D$ = "S" AND STERNY < 0
+    LET ERR = 1
+    LET M$ = "SHIP EXTENDS OFF TOP"
+    RETURN
+ENDIF
+IF D$ = "E" AND STERNX < 0
+    LET ERR = 1
+    LET M$ = "SHIP EXTENDS OFF LEFT"
+    RETURN
+ENDIF
+IF D$ = "W" AND STERNX > 30
+    LET ERR = 1
+    LET M$ = "SHIP EXTENDS OFF RIGHT"
+    RETURN
+ENDIF
+
+' Validate that the ship is entirely in the correct half of the screen.
+IF P$ = "L" AND (BOWX > 15 OR STERNX > 15)
+    LET ERR = 1
+    LET M$ = "LEFT PLAYER MUST PLAY ON LEFT 16 COLS"
+    RETURN
+ENDIF
+IF P$ = "R" AND (BOWX < 16 OR STERNX < 16)
+    LET ERR = 1
+    LET M$ = "RIGHT PLAYER MUST PLAY ON RIGHT 16 COLS"
+    RETURN
+ENDIF
+
+' Check for collisions by scanning each cell the ship would occupy
+LET CX = BOWX
+LET CY = BOWY
+FOR I = 0 TO LEN - 1
+    ' Get character at current position
+    ' TODO FIX
+    LET C = 0
+    ' Check if it's a ship character (144-155)
+    IF CODE C >= 144 AND CODE C <= 155
+        LET ERR = 1
+        LET M$ = "SHIP OVERLAPS WITH EXISTING SHIP"
+        RETURN
+    ENDIF
+    ' Move to next position based on direction
+    IF D$ = "N" THEN LET CY = CY + 1
+    IF D$ = "S" THEN LET CY = CY - 1
+    IF D$ = "E" THEN LET CX = CX - 1
+    IF D$ = "W" THEN LET CX = CX + 1
+NEXT I
+
+RETURN
+
+' Sets the visible board sides based on the active player
+' Potential alternate design choice: make this "TOGGLEACTIVEPLAYER" and swap P$ automatically
+@SETACTIVEPLAYER:
+    ' Obscure whole board
+    FOR y = 0 TO 21
+         PRINT OVER 1; BRIGHT 8; FLASH 8; PAPER 8; INK 1; AT y, 0; ,,
+    NEXT y
+
+    ' Once the handoff occurs, the player can press any key to continue
+    LET i$ = ""
+    PRINT AT 21, 0; "Press 'c' to continue..."
+    REPEAT
+         LET i$ = INKEY$
+    UNTIL i$ = "c" OR i$ = "C"
+    PRINT AT 21, 0; ,,
+
+    ' Now set the active/inactive board sides based on the active player:
+    ' For P$ = "L": left half active (INK 0)
+    ' For P$ = "R": left half inactive (INK 1)
+    FOR y = 0 TO 21
+         IF P$ = "L" 
+             PRINT OVER 1; FLASH 8; PAPER 8; INK 0; AT y, 0; ,
+         ELSEIF P$ = "R"
+             PRINT OVER 1; FLASH 8; PAPER 8; INK 0; AT y, 16; ,
+         ENDIF
+    NEXT y
+    RETURN
+
+@TARGET:
+    ' Allow the active player (indicated by P$) to select a target tile using WASD.
+    ' The final selected column and row will be returned in TX and TY.
+    ' For left player (P$ = "L") valid columns are 0–15.
+    ' For right player (P$ = "R") valid columns are 16–30.
+    
+    ' Initialize target position based on active player.
+    IF P$ = "R"
+         LET TX = 0
+    ELSEIF P$ = "L"
+         LET TX = 16
+    END IF
+    LET TY = 0
+
+    ' Highlight the starting cell with brightness 0.
+    PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT TY, TX; " "
+
+    ' Enter targeting loop:
+    PRINT AT 21, 0; "w/a/s/d: target; space: confirm"
+    REPEAT
+         LET k$ = INKEY$
+         IF k$ <> "" 
+              ' Move UP: decrease row if not at top
+              IF (k$ = "W" OR k$ = "w") AND TY > 0
+                  ' Remove highlight from current cell.
+                  PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 1; AT TY, TX; " "
+                  LET TY = TY - 1
+                  ' Highlight new cell.
+                  PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT TY, TX; " "
+              END IF
+              ' Move DOWN: increase row if not at bottom (max row = 21)
+              IF (k$ = "S" OR k$ = "s") AND TY < 21
+                  PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 1; AT TY, TX; " "
+                  LET TY = TY + 1
+                  PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT TY, TX; " "
+              END IF
+              ' Move LEFT: decrease column within active half.
+              IF (k$ = "A" OR k$ = "a") AND TX > 0
+                  IF P$ = "R" AND TX > 0
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 1; AT TY, TX; " "
+                      LET TX = TX - 1
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT TY, TX; " "
+                  ELSEIF P$ = "L" AND TX > 16
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 1; AT TY, TX; " "
+                      LET TX = TX - 1
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT TY, TX; " "
+                  END IF
+              END IF
+              ' Move RIGHT: increase column within active half.
+              IF (k$ = "D" OR k$ = "d") AND TX < 30
+                  IF P$ = "R" AND TX < 15
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 1; AT TY, TX; " "
+                      LET TX = TX + 1
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT TY, TX; " "
+                  ELSEIF P$ = "L" AND TX < 30
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 1; AT TY, TX; " "
+                      LET TX = TX + 1
+                      PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT TY, TX; " "
+                  END IF
+              END IF
+        ENDIF
+      ' Use the space key to confirm target selection.
+      UNTIL k$ = " "   
+
+    PRINT AT 21, 0; ,,
+
+    ' select target tiles in red
+    PRINT OVER 1; FLASH 8; PAPER 2; INK 8; BRIGHT 0; AT TY, TX; " "
+
+  ' Cross pattern because otherwise the game takes too long
+
+
+    IF TY + 1 <= 21 THEN PRINT OVER 1; FLASH 8; PAPER 2; INK 8; AT TY + 1, TX; " "
+    IF TY - 1 >= 0 THEN PRINT OVER 1; FLASH 8; PAPER 2; INK 8; AT TY - 1, TX; " "
+    IF P$ = "R" AND TX + 1 <= 15 THEN PRINT OVER 1; FLASH 8; PAPER 2; INK 8; AT TY, TX + 1; " "
+    IF P$ = "L" AND TX + 1 <= 30 THEN PRINT OVER 1; FLASH 8; PAPER 2; INK 8; AT TY, TX + 1; " "
+    IF P$ = "R" AND TX - 1 >= 0 THEN PRINT OVER 1; FLASH 8; PAPER 2; INK 8; AT TY, TX - 1; " "
+    IF P$ = "L" AND TX - 1 >= 16 THEN PRINT OVER 1; FLASH 8; PAPER 2; INK 8; AT TY, TX - 1; " "
+
+
+
+    RETURN
