@@ -55,88 +55,32 @@ NEXT n
 
 ' === SHIP SETUP ===
 
-' TODO(Nolan): allow users to set their own ships.
+' Array of ship lengths that each player must place
+DATA 2, 3, 5
+DIM S(3)
+FOR i=1 TO 3
+    READ S(i)
+NEXT i
+LET TOTALCELLS = S(1) + S(2) + S(3)   
+LET LHITS = 0                        
+LET RHITS = 0                        
 
+' Place ships for both players
 LET P$ = "L"
-
-LET BOWX = 4
-LET BOWY = 7
-LET D$ = "W"
-LET LEN = 6
-GO SUB @PRINTSHIP
-IF ERR = 1 
-    PRINT M$
-    STOP
-ENDIF
-
-LET BOWX = 3
-LET BOWY = 8
-LET D$ = "N"
-LET LEN = 3
-GO SUB @PRINTSHIP
-IF ERR = 1 
-    PRINT M$
-    STOP
-ENDIF
-
-LET BOWX = 14
-LET BOWY = 20
-LET D$ = "E"
-LET LEN = 2
-GO SUB @PRINTSHIP
-IF ERR = 1 
-    PRINT M$
-    STOP
-ENDIF
-
-
+GO SUB @PLACESHIPS
 LET P$ = "R"
 GO SUB @SETACTIVEPLAYER
-
-LET BOWX = 25
-LET BOWY = 15
-LET D$ = "N"
-LET LEN = 5
-GO SUB @PRINTSHIP
-IF ERR = 1 
-    PRINT M$
-    STOP
-ENDIF
-
-LET BOWX = 22
-LET BOWY = 12
-LET D$ = "S"
-LET LEN = 2
-GO SUB @PRINTSHIP
-IF ERR = 1 
-    PRINT M$
-    STOP
-ENDIF
-
-LET BOWX = 17
-LET BOWY = 3
-LET D$ = "N"
-LET LEN = 4
-GO SUB @PRINTSHIP
-IF ERR = 1 
-    PRINT M$
-    STOP
-ENDIF
+GO SUB @PLACESHIPS
 
 @mainloop:
-IF P$ = "L"
-    LET P$ = "R"
-ELSE
-    LET P$ = "L"
-ENDIF
+LET T$ = P$        
+IF T$ = "L" THEN LET P$ = "R"
+IF T$ <> "L" THEN LET P$ = "L"
 
 GO SUB @SETACTIVEPLAYER
 GO SUB @TARGET
-
-' TODO(Nolan): implement win condition
-
+GO SUB @CHECKWIN
 GO TO @mainloop
-
 
 ' === INPUTS ===
 ' P$: <"L", "R"> 
@@ -375,3 +319,159 @@ RETURN
 
 
     RETURN
+
+' === New ship placement subroutine ===
+' Due to deadline constraints, this code to implement ship placement
+' was generated in consultation with claude-3.5-sonnet
+' ... and then painstakingly hand-edited to fix logic errors and speccy-basic specificities (speccyficities?)
+@PLACESHIPS:
+    FOR L=1 TO 3
+        LET LEN = S(L)
+        ' Initialize position at top-left of player's area
+        IF P$ = "L"
+            LET BOWX = 0
+        ELSE 
+            LET BOWX = 16
+        ENDIF
+        LET BOWY = 0
+        LET D$ = "W"
+        
+        @PLACEMENTLOOP:
+            ' Preview ship position - first validate
+            GO SUB @VALIDATEPRINT
+            IF ERR = 0
+                ' Show preview of full ship
+                LET PX = BOWX
+                LET PY = BOWY
+                FOR F=0 TO LEN - 1
+                    PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 0; AT PY, PX; " "
+                    ' Move preview position based on direction
+                    IF D$ = "N"
+                        LET PY = PY + 1
+                    ENDIF
+                    IF D$ = "S"
+                        LET PY = PY - 1
+                    ENDIF
+                    IF D$ = "E"
+                        LET PX = PX - 1
+                    ENDIF
+                    IF D$ = "W"
+                        LET PX = PX + 1
+                    ENDIF
+                NEXT F
+            ENDIF
+            
+            PRINT AT 21, 0; "WASD/QE/space: mv/rot/confirm"
+            LET k$ = INKEY$
+            
+            IF k$ <> ""
+                ' Clear current preview
+                LET PX = BOWX
+                LET PY = BOWY
+                FOR F=0 TO LEN - 1
+                    PRINT OVER 1; FLASH 8; PAPER 8; INK 8; BRIGHT 1; AT PY, PX; " "
+                    IF D$ = "N"
+                        LET PY = PY + 1
+                    ENDIF
+                    IF D$ = "S"
+                        LET PY = PY - 1
+                    ENDIF
+                    IF D$ = "E"
+                        LET PX = PX - 1
+                    ENDIF
+                    IF D$ = "W"
+                        LET PX = PX + 1
+                    ENDIF
+                NEXT F
+                
+                ' Store current valid position before attempting move
+                LET LASTX = BOWX
+                LET LASTY = BOWY
+                LET R$ = D$
+                
+                ' Handle movement
+                IF (k$ = "W" OR k$ = "w") AND BOWY > 0
+                    LET BOWY = BOWY - 1
+                ENDIF
+                IF (k$ = "S" OR k$ = "s") AND BOWY < 21
+                    LET BOWY = BOWY + 1
+                ENDIF
+                IF (k$ = "A" OR k$ = "a")
+                    IF P$ = "L" AND BOWX > 0
+                        LET BOWX = BOWX - 1
+                    ENDIF
+                    IF P$ = "R" AND BOWX > 16
+                        LET BOWX = BOWX - 1
+                    ENDIF
+                ENDIF
+                IF (k$ = "D" OR k$ = "d")
+                    IF P$ = "L" AND BOWX < 15
+                        LET BOWX = BOWX + 1
+                    ENDIF
+                    IF P$ = "R" AND BOWX < 30
+                        LET BOWX = BOWX + 1
+                    ENDIF
+                ENDIF
+                
+                ' Handle rotation
+                IF k$ = "Q" OR k$ = "q"
+                    IF D$ = "N" 
+                        LET D$ = "W"
+                    ELIF D$ = "W" 
+                        LET D$ = "S"
+                    ELIF D$ = "S" 
+                        LET D$ = "E"
+                    ELIF D$ = "E" 
+                        LET D$ = "N"
+                    ENDIF
+                ENDIF
+                IF k$ = "E" OR k$ = "e"
+                    IF D$ = "N" 
+                        LET D$ = "E"
+                    ELIF D$ = "E" 
+                        LET D$ = "S"
+                    ELIF D$ = "S" 
+                        LET D$ = "W"
+                    ELIF D$ = "W" 
+                        LET D$ = "N"
+                    ENDIF
+                ENDIF
+                
+                ' Validate new position
+                GO SUB @VALIDATEPRINT
+                IF ERR = 1
+                    ' Reset to last valid position if invalid
+                    LET BOWX = LASTX
+                    LET BOWY = LASTY
+                    LET D$ = R$
+                ENDIF
+            ENDIF
+            
+            IF k$ <> " "
+                GO TO @PLACEMENTLOOP
+            ENDIF
+            
+            ' Final validation and placement
+            GO SUB @VALIDATEPRINT
+            IF ERR = 0
+                GO SUB @PRINTSHIP
+            ELSE
+                GO TO @PLACEMENTLOOP
+            ENDIF
+            
+            PRINT AT 21, 0; ,,
+    NEXT L
+    RETURN
+
+@CHECKWIN:
+    IF LHITS >= TOTALCELLS THEN GO SUB @LEFTWIN
+    IF RHITS >= TOTALCELLS THEN GO SUB @RIGHTWIN
+    RETURN
+
+@LEFTWIN:
+    PRINT AT 21, 0; "LEFT PLAYER WINS!"
+    STOP
+
+@RIGHTWIN:
+    PRINT AT 21, 0; "RIGHT PLAYER WINS!"
+    STOP
