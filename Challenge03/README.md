@@ -15,4 +15,4 @@ It continues with an explination for graphics:
 https://benjamin.computer/posts/2022-06-08-youwouldnt.html
 
 Seconds per step with current code:
-17
+10-17

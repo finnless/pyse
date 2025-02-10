@@ -48,27 +48,60 @@ static inline int count_neighbors(uint8_t* screen, int x, int y) {
 		 + get_pixel(screen, x,   y+1)
 		 + get_pixel(screen, x+1, y+1);
 }
+/* Helper function: Build the mask for the region.
+   The mask marks cells that are alive, or any of their neighbors.
+*/
+void build_mask(uint8_t *backup, uint8_t *mask) {
+    // Clear the mask first.
+    memset(mask, 0, REGION_SIZE * REGION_SIZE);
+    // Iterate over the region in the backup state.
+    for (int y = 0; y < REGION_SIZE; y++) {
+        for (int x = 0; x < REGION_SIZE; x++) {
+            uint8_t abs_x = REGION_X + x;
+            uint8_t abs_y = REGION_Y + y;
+            if (get(backup, abs_x, abs_y)) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int mask_x = x + dx;
+                        int mask_y = y + dy;
+                        if (mask_x >= 0 && mask_x < REGION_SIZE &&
+                            mask_y >= 0 && mask_y < REGION_SIZE) {
+                            mask[mask_y * REGION_SIZE + mask_x] = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
-void update_generation(uint8_t* backup) {
-	memcpy(backup, (uint8_t*)SCREEN_BASE, SCREEN_SIZE);
+void update_generation(uint8_t *backup, uint8_t *mask) {
+    memcpy(backup, (uint8_t*)SCREEN_BASE, SCREEN_SIZE);
+    build_mask(backup, mask);
 
-	for (int y = REGION_Y; y < REGION_Y + REGION_SIZE; y++) {
-		for (int x = REGION_X; x < REGION_X + REGION_SIZE; x++) {
-			int alive = get(backup, x, y);
-			int neighbors = count_neighbors(backup, x, y);
-			
-			if ((alive && (neighbors == 2 || neighbors == 3)) || 
-				(!alive && neighbors == 3)) {
-				set(SCREEN, x, y, 1);
-			} else {	
-				set(SCREEN, x, y, 0);
-			}
-		}
-	}
+    // Process only the cells in the REGION which are flagged in the mask.
+    for (int y = 0; y < REGION_SIZE; y++) {
+        for (int x = 0; x < REGION_SIZE; x++) {
+            if (mask[y * REGION_SIZE + x]) {
+                int abs_x = REGION_X + x;
+                int abs_y = REGION_Y + y;
+                int alive = get(backup, abs_x, abs_y);
+                int neighbors = count_neighbors(backup, abs_x, abs_y);
+                
+                if ((alive && (neighbors < 2 || neighbors > 3)) ||
+                    (!alive && neighbors != 3)) {
+                    set(SCREEN, abs_x, abs_y, 0);
+                } else if (!alive && neighbors == 3) {
+                    set(SCREEN, abs_x, abs_y, 1);
+                }
+            }
+        }
+    }
 }
 
 int main(void) {
 	static uint8_t backup[SCREEN_SIZE];
+	static uint8_t mask[REGION_SIZE * REGION_SIZE];
 
 	// The screen is probably clear, but just in case...
 	memset(SCREEN, 0, SCREEN_SIZE);
@@ -119,6 +152,6 @@ int main(void) {
 
 
 	while(1) {
-		update_generation(backup);
+		update_generation(backup, mask);
 	}
 }
