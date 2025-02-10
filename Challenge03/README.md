@@ -13,3 +13,6 @@ Primarily [pasmo](https://pasmo.speccy.org/) and [bin2tap](https://sourceforge.n
 
 It continues with an explination for graphics:
 https://benjamin.computer/posts/2022-06-08-youwouldnt.html
+
+Seconds per step with current code:
+39
