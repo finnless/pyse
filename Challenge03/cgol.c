@@ -39,23 +39,14 @@ static inline int get_pixel(uint8_t* screen, int x, int y) {
 }
 
 static inline int count_neighbors(uint8_t* screen, int x, int y) {
-	int count = 0;
-	// Top row neighbors
-	if (y > 0) {
-		if (x > 0) count += get_pixel(screen, x - 1, y - 1);
-		count += get_pixel(screen, x, y - 1);
-		if (x < WIDTH - 1) count += get_pixel(screen, x + 1, y - 1);
-	}
-	// Same row neighbors (no center)
-	if (x > 0) count += get_pixel(screen, x - 1, y);
-	if (x < WIDTH - 1) count += get_pixel(screen, x + 1, y);
-	// Bottom row neighbors
-	if (y < HEIGHT - 1) {
-		if (x > 0) count += get_pixel(screen, x - 1, y + 1);
-		count += get_pixel(screen, x, y + 1);
-		if (x < WIDTH - 1) count += get_pixel(screen, x + 1, y + 1);
-	}
-	return count;
+	return get_pixel(screen, x-1, y-1)
+		 + get_pixel(screen, x,   y-1)
+		 + get_pixel(screen, x+1, y-1)
+		 + get_pixel(screen, x-1, y)
+		 + get_pixel(screen, x+1, y)
+		 + get_pixel(screen, x-1, y+1)
+		 + get_pixel(screen, x,   y+1)
+		 + get_pixel(screen, x+1, y+1);
 }
 
 void update_generation(uint8_t* backup) {
