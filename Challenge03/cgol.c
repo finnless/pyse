@@ -33,16 +33,27 @@ int get(uint8_t* screen, uint8_t x, uint8_t y) {
 	return (*px & (0x80 >> (x & 0x7))) != 0;
 }
 
-int count_neighbors(uint8_t* screen, int x, int y) {
+static inline int get_pixel(uint8_t* screen, int x, int y) {
+	uint16_t offset = ((y & 0xC0) << 5) | ((y & 0x07) << 8) | ((y & 0x38) << 2) | (x >> 3);
+	return (screen[offset] & (0x80 >> (x & 0x7))) ? 1 : 0;
+}
+
+static inline int count_neighbors(uint8_t* screen, int x, int y) {
 	int count = 0;
-	for (int dy = -1; dy <= 1; dy++) {
-		for (int dx = -1; dx <= 1; dx++) {
-			if (dx == 0 && dy == 0) continue;
-			int nx = x + dx;
-			int ny = y + dy;
-			if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
-			if (get(screen, nx, ny)) count++;
-		}
+	// Top row neighbors
+	if (y > 0) {
+		if (x > 0) count += get_pixel(screen, x - 1, y - 1);
+		count += get_pixel(screen, x, y - 1);
+		if (x < WIDTH - 1) count += get_pixel(screen, x + 1, y - 1);
+	}
+	// Same row neighbors (no center)
+	if (x > 0) count += get_pixel(screen, x - 1, y);
+	if (x < WIDTH - 1) count += get_pixel(screen, x + 1, y);
+	// Bottom row neighbors
+	if (y < HEIGHT - 1) {
+		if (x > 0) count += get_pixel(screen, x - 1, y + 1);
+		count += get_pixel(screen, x, y + 1);
+		if (x < WIDTH - 1) count += get_pixel(screen, x + 1, y + 1);
 	}
 	return count;
 }
