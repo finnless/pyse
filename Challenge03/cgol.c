@@ -9,7 +9,7 @@
 
 
 // reduce computation by computing a smaller region
-#define REGION_SIZE 100
+#define REGION_SIZE 32
 #define REGION_X ((WIDTH - REGION_SIZE)/2)
 #define REGION_Y ((HEIGHT - REGION_SIZE)/2)
 
@@ -34,6 +34,7 @@ int get(uint8_t* screen, uint8_t x, uint8_t y) {
 }
 
 static inline int get_pixel(uint8_t* screen, int x, int y) {
+    // TODO: Use precomputed offset if coordinates are within the active region.
 	uint16_t offset = ((y & 0xC0) << 5) | ((y & 0x07) << 8) | ((y & 0x38) << 2) | (x >> 3);
 	return (screen[offset] & (0x80 >> (x & 0x7))) ? 1 : 0;
 }
@@ -48,6 +49,8 @@ static inline int count_neighbors(uint8_t* screen, int x, int y) {
 		 + get_pixel(screen, x,   y+1)
 		 + get_pixel(screen, x+1, y+1);
 }
+
+// ATTRIBUTION: o3-mini for this mask building algorithm
 /* Helper function: Build the mask for the region.
    The mask marks cells that are alive, or any of their neighbors.
 */
@@ -74,6 +77,7 @@ void build_mask(uint8_t *backup, uint8_t *mask) {
         }
     }
 }
+// END ATTRIBUTION
 
 void update_generation(uint8_t *backup, uint8_t *mask) {
     memcpy(backup, (uint8_t*)SCREEN_BASE, SCREEN_SIZE);
@@ -105,7 +109,7 @@ int main(void) {
 
 	// The screen is probably clear, but just in case...
 	memset(SCREEN, 0, SCREEN_SIZE);
-	
+
 	const uint8_t center_x = WIDTH/2;
 	const uint8_t center_y = HEIGHT/2;
 	const uint8_t radius = 10;
@@ -123,6 +127,7 @@ int main(void) {
 	}
 
 
+	// TODO interactive mode: the red cursor is controlled by the arrow keys for placing cells
 
 	// ATTRIBUTION: CLAUDE 3.5 for this circle drawing algorithm
 	
