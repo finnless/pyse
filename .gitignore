@@ -5,3 +5,5 @@
 *.lk
 *.noi
 *.rel
+
+venv
