@@ -4,6 +4,7 @@ import random
 import ctypes
 import sdl2
 import sdl2.ext
+import time
 
 # -----------------------------------------------------------------------------
 # Display class: Handles window creation, rendering, texture updates, and frame
@@ -47,6 +48,9 @@ class Display:
         
         # Initialize random number generator
         random.seed()
+        
+        # Base title for window
+        self.base_title = title
 
     def __del__(self):
         if hasattr(self, 'texture') and self.texture:
@@ -69,6 +73,11 @@ class Display:
         sdl2.SDL_RenderClear(self.renderer)
         sdl2.SDL_RenderCopy(self.renderer, self.texture, None, None)
         sdl2.SDL_RenderPresent(self.renderer)
+        
+    def set_title_fps(self, fps):
+        """Update window title with FPS information"""
+        title = f"{self.base_title} - FPS: {fps:.1f}"
+        sdl2.SDL_SetWindowTitle(self.window, title.encode())
 
     # Generates a frame with classic color bars, a scanline effect, and some
     # noise.
@@ -110,16 +119,35 @@ class Display:
 class System:
     def __init__(self):
         self.display = Display("Retro PAL TV Simulation in Python")
+        # FPS tracking variables
+        self.frame_count = 0
+        self.fps = 0.0
+        self.last_time = time.time()
+        self.fps_update_interval = 0.5  # Update FPS display every 0.5 seconds
 
     def run(self):
         quit = False
         event = sdl2.SDL_Event()
+        
         while not quit:
+            # FPS calculation
+            current_time = time.time()
+            self.frame_count += 1
+            
+            # Update FPS counter every fps_update_interval seconds
+            elapsed = current_time - self.last_time
+            if elapsed >= self.fps_update_interval:
+                self.fps = self.frame_count / elapsed
+                self.display.set_title_fps(self.fps)
+                self.frame_count = 0
+                self.last_time = current_time
+            
             while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
                 if event.type == sdl2.SDL_QUIT or event.type == sdl2.SDL_KEYDOWN:
                     quit = True
+            
             self.display.update()
-            sdl2.SDL_Delay(16)  # ~60 FPS
+            sdl2.SDL_Delay(16)  # ~60 FPS target
 
 
 # -----------------------------------------------------------------------------
