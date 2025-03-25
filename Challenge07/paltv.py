@@ -5,6 +5,8 @@ import ctypes
 import sdl2
 import sdl2.ext
 import time
+import numpy as np
+from numba import jit, uint32, int32, float32
 
 # -----------------------------------------------------------------------------
 # Display class: Handles window creation, rendering, texture updates, and frame
@@ -51,6 +53,9 @@ class Display:
         
         # Base title for window
         self.base_title = title
+        
+        # Random noise array
+        self.noise_array = np.random.randint(0, 0xFFFFFFFF, (self.HEIGHT, self.WIDTH), dtype=np.uint32)
 
     def __del__(self):
         if hasattr(self, 'texture') and self.texture:
@@ -63,6 +68,9 @@ class Display:
     # Updates the frame: regenerates the display with color bars, scanlines,
     # and noise.
     def update(self):
+        # Update the noise array with fresh random values
+        self.noise_array = np.random.randint(0, 0xFFFFFFFF, (self.HEIGHT, self.WIDTH), dtype=np.uint32)
+        
         self.generate_frame()
         sdl2.SDL_UpdateTexture(
             self.texture,
@@ -82,8 +90,11 @@ class Display:
     # Generates a frame with classic color bars, a scanline effect, and some
     # noise.
     def generate_frame(self):
+        # Convert to NumPy array for Numba
+        pixels_array = np.frombuffer(self.pixels, dtype=np.uint32).reshape(self.HEIGHT, self.WIDTH)
+        
         # 7 color bars (ARGB): white, yellow, cyan, green, magenta, red, blue.
-        color_bars = [
+        color_bars = np.array([
             0xFFFFFFFF,  # White
             0xFFFFFF00,  # Yellow
             0xFF00FFFF,  # Cyan
@@ -91,27 +102,34 @@ class Display:
             0xFFFF00FF,  # Magenta
             0xFFFF0000,  # Red
             0xFF0000FF   # Blue
-        ]
+        ], dtype=np.uint32)
+        
+        # Call JIT-optimized function
+        _generate_frame_jit(pixels_array, self.WIDTH, self.HEIGHT, color_bars, self.noise_array)
 
-        for y in range(self.HEIGHT):
-            brightness = 0.75 if y % 2 == 0 else 1.0  # Scanline dimming
-            for x in range(self.WIDTH):
-                bar_index = (x * 7) // self.WIDTH
-                base_color = color_bars[bar_index]
+# JIT-optimized function for pixel manipulation
+@jit(nopython=True)
+def _generate_frame_jit(pixels, width, height, color_bars, noise_array):
+    for y in range(height):
+        brightness = 0.75 if y % 2 == 0 else 1.0  # Scanline dimming
+        for x in range(width):
+            bar_index = (x * 7) // width
+            base_color = color_bars[bar_index]
 
-                # Extract ARGB components and apply brightness
-                a = (base_color >> 24) & 0xFF
-                r = int(((base_color >> 16) & 0xFF) * brightness)
-                g = int(((base_color >> 8) & 0xFF) * brightness)
-                b = int((base_color & 0xFF) * brightness)
-                color = (a << 24) | (r << 16) | (g << 8) | b
+            # Extract ARGB components and apply brightness
+            a = (base_color >> 24) & 0xFF
+            r = int(((base_color >> 16) & 0xFF) * brightness)
+            g = int(((base_color >> 8) & 0xFF) * brightness)
+            b = int((base_color & 0xFF) * brightness)
+            color = (a << 24) | (r << 16) | (g << 8) | b
 
-                # Generate a mask to add noise. 1s in the high bits (and
-                # the alpha channel), random noise in the low order bits.
-                noise = random.randint(0, 0xFFFFFFFF) | 0xFFC0C0C0
-                color &= noise
+            # Use pre-generated noise from the noise array
+            # Generate a mask to add noise. 1s in the high bits (and
+            # the alpha channel), random noise in the low order bits.
+            noise = noise_array[y, x] | 0xFFC0C0C0
+            color &= noise
 
-                self.pixels[y * self.WIDTH + x] = color
+            pixels[y, x] = color
 
 
 # -----------------------------------------------------------------------------
