@@ -71,14 +71,14 @@ class CRT:
         
         # Spectrum color palette (RGBA format)
         self.rgba_color_table = np.array([
-            0xFF000000,  # Black
-            0xFF0000FF,  # Blue
-            0xFFFF0000,  # Red
-            0xFFFF00FF,  # Magenta
-            0xFF00FF00,  # Green
-            0xFF00FFFF,  # Cyan
-            0xFFFFFF00,  # Yellow
-            0xFFFFFFFF   # White
+            0x00000000,  # Black
+            0x0000FF00,  # Blue
+            0xFF000000,  # Red
+            0xFF00FF00,  # Magenta
+            0x00FF0000,  # Green
+            0x00FFFF00,  # Cyan
+            0xFFFF0000,  # Yellow
+            0xFFFFFF00   # White
         ], dtype=np.uint32)
 
     def __del__(self):
@@ -135,10 +135,10 @@ class CRT:
             # Apply bleed effect to adjacent scanline
             if not bright:
                 # 50% brightness for non-bright colors
-                bleed_color = ((color >> 1) & 0x7F7F7F7F) | 0xFF000000
+                bleed_color = ((color >> 1) & 0x7F7F7F7F) | 0x000000FF
             else:
                 # 84% brightness for bright colors (mimics phosphor persistence)
-                bleed_color = (((color >> 3) & 0x07070707) * 27) | 0xFF000000
+                bleed_color = (((color >> 3) & 0x07070707) * 27) | 0x000000FF
                 
             self.pixels[bleed_y, pixel_x] = ((self.pixels[bleed_y, pixel_x] >> 2) & 0x3F3F3F3F) | bleed_color
 
