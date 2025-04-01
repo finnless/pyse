@@ -479,6 +479,13 @@ class System:
             self.memory.load_from_file(filename, 0x4000, 6912)
         except Exception as e:
             print(f"Error loading SCR file: {e}", file=sys.stderr)
+            
+    def load_rom(self, filename):
+        """Load a ROM file into memory at address 0x0000"""
+        try:
+            self.memory.load_from_file(filename, 0x0000, 16384)  # 16KB ROM
+        except Exception as e:
+            print(f"Error loading ROM file: {e}", file=sys.stderr)
 
 
 # -----------------------------------------------------------------------------
@@ -492,21 +499,38 @@ def main():
         # Parse command line arguments
         system = System()
         
+        # Track if a ROM has been loaded
+        rom_loaded = False
+        
         # Handle command line arguments for loading files
         if len(sys.argv) > 1:
             for arg in sys.argv[1:]:
                 if arg == "-h" or arg == "--help":
                     print(f"Usage: {sys.argv[0]} [options] [filename...]")
                     print("Options:")
-                    print("  -h, --help           Show this help message")
-                    print("Files supported:")
-                    print("  .scr                 ZX Spectrum screen file (6912 bytes)")
+                    print("  -h, --help           Display command information")
+                    print("Available file formats:")
+                    print("  .scr                 Screen data (6912 bytes)")
+                    print("  .rom                 System ROM (16384 bytes)")
+                    print("Default ROM '48.rom' will be loaded if no ROM specified.")
                     return 0
                 elif arg.endswith(".scr"):
                     print(f"Loading screen file: {arg}")
                     system.load_scr(arg)
+                elif arg.endswith(".rom"):
+                    print(f"Loading ROM file: {arg}")
+                    system.load_rom(arg)
+                    rom_loaded = True
                 else:
                     print(f"Unknown file type: {arg}", file=sys.stderr)
+        
+        # Load default ROM if no ROM was specified
+        if not rom_loaded:
+            try:
+                print("Loading default ROM: 48.rom")
+                system.load_rom("48.rom")
+            except Exception as e:
+                print(f"Error loading default ROM: {e}", file=sys.stderr)
         
         system.run()
     except Exception as ex:
