@@ -325,9 +325,9 @@ class CPU:
         
     def tick(self):
         """Process one CPU cycle"""
-        print(f"pyse::CPU::tick 1: pins = {self.pins} (0x{self.pins:016X})")
+        # print(f"pyse::CPU::tick 1: pins = {self.pins} (0x{self.pins:016X})")
         self.pins = self.z80.tick(self.pins)
-        print(f"pyse::CPU::tick 2: pins = {self.pins} (0x{self.pins:016X})")
+        # print(f"pyse::CPU::tick 2: pins = {self.pins} (0x{self.pins:016X})")
         self.transact()
         
     def transact(self):
@@ -336,22 +336,22 @@ class CPU:
             addr = self.z80.addr
             if self.z80.is_rd():  # Memory read
                 data = self.memory.read(addr)
-                print(f"Read from {addr:04X} = {data:02X}")
-                print(f"Before Z80_SET_DATA: pins={self.pins:016X}, data={data:02X}")
+                # print(f"Read from {addr:04X} = {data:02X}")
+                # print(f"Before Z80_SET_DATA: pins={self.pins:016X}, data={data:02X}")
                 # Check Z80_PIN_D0 value
-                print(f"Z80_PIN_D0 = {Z80_PIN_D0}")
+                # print(f"Z80_PIN_D0 = {Z80_PIN_D0}")
                 # Try swapping parameters if needed
-                self.pins = Z80_SET_DATA(self.pins, data)
+                self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
             elif self.z80.is_wr():  # Memory write
                 data = self.z80.data
                 self.memory.write(addr, data)
         elif self.z80.is_iorq():  # IO request
             if self.z80.is_m1():  # Interrupt acknowledge
-                self.pins = Z80_SET_DATA(self.pins, 0xFF)
+                self.pins = Z80_SET_DATA(int(self.pins), 0xFF)
             else:
                 addr = self.z80.addr
                 if self.z80.is_rd():  # IO read
-                    self.pins = Z80_SET_DATA(self.pins, 0xFF)
+                    self.pins = Z80_SET_DATA(int(self.pins), 0xFF)
                 elif self.z80.is_wr():  # IO write
                     pass
     
