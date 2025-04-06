@@ -316,10 +316,54 @@ class Memory:
 
 
 # -----------------------------------------------------------------------------
+# IODevice: Abstract base class for IO devices
+class IODevice:
+    def read(self, addr):
+        """Read a byte from IO port at the specified address"""
+        return 0xFF  # Default implementation returns 0xFF (all bits set)
+    
+    def write(self, addr, value):
+        """Write a byte to IO port at the specified address"""
+        pass  # Default implementation does nothing
+
+
+# -----------------------------------------------------------------------------
+# IODeviceBus: Manages IO devices with port masking
+class IODeviceBus:
+    def __init__(self):
+        # List of (mask, device) pairs
+        self.devices = []
+    
+    def add_device(self, mask, device):
+        """Add a device with the specified port mask
+        
+        Args:
+            mask: port mask (devices respond when ~addr & mask == mask)
+            device: IODevice instance
+        """
+        self.devices.append((mask, device))
+    
+    def read(self, addr):
+        """Read from the appropriate device based on port address"""
+        for mask, device in self.devices:
+            if ((~addr) & mask) == mask:
+                return device.read(addr)
+        return 0xFF  # Default return value if no device responds
+    
+    def write(self, addr, value):
+        """Write to the appropriate device based on port address"""
+        for mask, device in self.devices:
+            if ((~addr) & mask) == mask:
+                device.write(addr, value)
+                return
+
+
+# -----------------------------------------------------------------------------
 # CPU class: Wraps the Z80 CPU and interfaces with memory and IO
 class CPU:
-    def __init__(self, memory):
+    def __init__(self, memory, io_bus=None):
         self.memory = memory
+        self.io_bus = io_bus
         self.z80 = Z80()
         self.pins = self.z80.pins
         
@@ -351,9 +395,14 @@ class CPU:
             else:
                 addr = self.z80.addr
                 if self.z80.is_rd():  # IO read
-                    self.pins = Z80_SET_DATA(int(self.pins), 0xFF)
+                    if self.io_bus is not None:
+                        data = self.io_bus.read(addr)
+                    else:
+                        data = 0xFF  # Default if no IO bus
+                    self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
                 elif self.z80.is_wr():  # IO write
-                    pass
+                    if self.io_bus is not None:
+                        self.io_bus.write(addr, self.z80.data)
     
     def interrupt(self, status=True):
         """Set or clear the interrupt pin"""
@@ -369,7 +418,7 @@ class CPU:
 
 # -----------------------------------------------------------------------------
 # ULA (Uncommitted Logic Array) class: Handles display generation and timing
-class ULA:
+class ULA(IODevice):
     # Display generation constants
     SCREEN_START_LINE = 64
     SCREEN_START_COLUMN = 6
@@ -382,6 +431,7 @@ class ULA:
     INTERRUPT_DURATION = 32
     
     def __init__(self, memory, crt, cpu):
+        super().__init__()
         self.memory = memory
         self.crt = crt
         self.cpu = cpu
@@ -392,6 +442,17 @@ class ULA:
         self.line_cycle = 0     # Current cycle within line (0-223)
         self.current_column = 0
         self.flash_flipper = self.FLASH_RATE
+    
+    def read(self, addr):
+        """Read from ULA ports (0xFE)"""
+        # In a real ZX Spectrum, reading from ULA port would return keyboard state
+        # For now, we'll just return 0xFF (no keys pressed)
+        return 0xFF
+    
+    def write(self, addr, value):
+        """Write to ULA ports (0xFE)"""
+        # Border color is in the lower 3 bits
+        self.set_border_color(value)
     
     def tick(self):
         """Process one T-state of ULA operation"""
@@ -481,8 +542,19 @@ class System:
         # Initialize components
         self.crt = CRT()
         self.memory = Memory()
-        self.cpu = CPU(self.memory)
+        
+        # Create IO bus for device handling
+        self.io_bus = IODeviceBus()
+        
+        # Create CPU with memory and IO bus
+        self.cpu = CPU(self.memory, self.io_bus)
+        
+        # Create ULA and connect to the bus
         self.ula = ULA(self.memory, self.crt, self.cpu)
+        
+        # Add ULA to the IO bus with port mask 0x0001
+        # This will make the ULA respond to port 0xFE
+        self.io_bus.add_device(0x0001, self.ula)
         
         # Timing variables
         self.current_t_state = 0
