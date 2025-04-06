@@ -381,9 +381,10 @@ class ULA:
     FLASH_RATE = 16
     INTERRUPT_DURATION = 32
     
-    def __init__(self, memory, crt):
+    def __init__(self, memory, crt, cpu):
         self.memory = memory
         self.crt = crt
+        self.cpu = cpu
         self.border_color = 0
         
         # Current position tracking for beam simulation
@@ -394,6 +395,9 @@ class ULA:
     
     def tick(self):
         """Process one T-state of ULA operation"""
+        # First tick the CPU
+        self.cpu.tick()
+        
         # Check if we're in the visible (non-blanking) area
         visible = (self.line >= CRT.TOP_BLANKING and 
                   self.line < (CRT.FIELD_LINES - CRT.BOTTOM_BLANKING))
@@ -434,11 +438,11 @@ class ULA:
         
         # Generate interrupts at the start of the frame
         if self.line == 0 and self.line_cycle == self.BORDER_T_STATES:
-            # CPU interrupt would happen here in the full implementation
-            pass
+            # Generate CPU interrupt
+            self.cpu.interrupt(True)
         elif self.line == 0 and self.line_cycle == self.BORDER_T_STATES + self.INTERRUPT_DURATION:
             # End of interrupt
-            pass
+            self.cpu.interrupt(False)
             
         # Check if we've reached the end of a line
         if self.line_cycle >= T_STATES_PER_LINE:
@@ -478,7 +482,7 @@ class System:
         self.crt = CRT()
         self.memory = Memory()
         self.cpu = CPU(self.memory)
-        self.ula = ULA(self.memory, self.crt)
+        self.ula = ULA(self.memory, self.crt, self.cpu)
         
         # Timing variables
         self.current_t_state = 0
@@ -517,7 +521,6 @@ class System:
             # Process a chunk of emulation
             target_t_state = self.current_t_state + self.CHUNK_SIZE
             while self.current_t_state < target_t_state:
-                self.cpu.tick()
                 self.ula.tick()
                 self.current_t_state += 1
             
@@ -558,6 +561,66 @@ class System:
             self.memory.load_from_file(filename, 0x0000, 16384)  # 16KB ROM
         except Exception as e:
             print(f"Error loading ROM file: {e}", file=sys.stderr)
+            
+    def load_sna(self, filename):
+        """Load a .sna snapshot file
+        
+        SNA Layout:
+        Offset  Size  Description
+        -----------------------------------
+        0       1     byte   I
+        1       8     word   HL',DE',BC',AF'
+        9       10    word   HL,DE,BC,IY,IX
+        19      1     byte   Interrupt (bit 2 contains IFF2, 1=EI/0=DI)
+        20      1     byte   R
+        21      4     words  AF,SP
+        25      1     byte   IntMode (0=IM0/1=IM1/2=IM2)
+        26      1     byte   BorderColor (0..7)
+        27      49152 bytes  RAM dump 16384..65535
+        """
+        try:
+            with open(filename, 'rb') as f:
+                # Typical SNA is 49179 bytes
+                data = f.read()
+                if len(data) < 27:
+                    raise RuntimeError(f"Invalid SNA file: too small")
+                
+                # Store the registers
+                registers = {
+                    'i': data[0],
+                    'hl_alt': (data[2] << 8) | data[1],
+                    'de_alt': (data[4] << 8) | data[3],
+                    'bc_alt': (data[6] << 8) | data[5],
+                    'af_alt': (data[8] << 8) | data[7],
+                    'hl': (data[10] << 8) | data[9],
+                    'de': (data[12] << 8) | data[11],
+                    'bc': (data[14] << 8) | data[13],
+                    'iy': (data[16] << 8) | data[15],
+                    'ix': (data[18] << 8) | data[17],
+                    'iff2': (data[19] & 0x04) != 0,
+                    'r': data[20],
+                    'af': (data[22] << 8) | data[21],
+                    'sp': (data[24] << 8) | data[23],
+                    'im': data[25],
+                    'border': data[26] & 0x07
+                }
+                
+                # Set the border color
+                self.ula.set_border_color(registers['border'])
+                
+                # Load the RAM image (49152 bytes, starting at 0x4000)
+                if len(data) >= 49179:
+                    ram_data = data[27:49179]
+                    self.memory.ram[0x4000:0x10000] = np.frombuffer(ram_data, dtype=np.uint8)
+                else:
+                    raise RuntimeError(f"Invalid SNA file: not enough memory data")
+                
+                # TODO: Set CPU registers from the snapshot data
+                # For now, we'll just set PC to 0x0072 (RETN address in ROM)
+                self.cpu.set_pc(0x0072)
+                
+        except Exception as e:
+            print(f"Error loading SNA file: {e}", file=sys.stderr)
 
 
 # -----------------------------------------------------------------------------
@@ -583,6 +646,7 @@ def main():
                 print("Available file formats:")
                 print("  .scr                 Screen data (6912 bytes)")
                 print("  .rom                 System ROM (16384 bytes)")
+                print("  .sna                 Snapshot file (49179 bytes)")
                 print("Default ROM '48.rom' will be loaded if no ROM specified.")
                 return 0
             elif arg.endswith(".scr"):
@@ -592,6 +656,10 @@ def main():
             elif arg.endswith(".rom"):
                 print(f"Loading ROM file: {arg}")
                 system.load_rom(arg)
+                rom_loaded = True
+            elif arg.endswith(".sna"):
+                print(f"Loading SNA snapshot file: {arg}")
+                system.load_sna(arg)
                 rom_loaded = True
             else:
                 print(f"Unknown file type: {arg}", file=sys.stderr)
