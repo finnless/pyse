@@ -6,6 +6,24 @@ import numpy as np
 import sdl2
 import sdl2.ext
 from numba import jit, uint32
+import os
+
+# Add the vendored pyz80 directory to the path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+pyz80_dir = os.path.join(script_dir, 'pyz80')
+if pyz80_dir not in sys.path:
+    sys.path.insert(0, pyz80_dir)
+
+# TODO REMOVE THIS GARBAGE. change pyz80 to an installed package.
+os.chdir(os.path.join(os.path.dirname(__file__), 'pyz80'))
+
+# Import Z80 CPU
+from pyz80 import Z80
+from _z80_bindings import Z80_INT, Z80_M1, Z80_MREQ, Z80_IORQ, Z80_RD, Z80_WR, Z80_SET_DATA, Z80_PIN_D0
+
+# TODO REMOVE THIS GARBAGE
+# Change back to original directory
+os.chdir(os.path.dirname(__file__))
 
 # -----------------------------------------------------------------------------
 # Timing constants (all in T-states)
@@ -298,6 +316,58 @@ class Memory:
 
 
 # -----------------------------------------------------------------------------
+# CPU class: Wraps the Z80 CPU and interfaces with memory and IO
+class CPU:
+    def __init__(self, memory):
+        self.memory = memory
+        self.z80 = Z80()
+        self.pins = self.z80.pins
+        
+    def tick(self):
+        """Process one CPU cycle"""
+        print(f"pyse::CPU::tick 1: pins = {self.pins} (0x{self.pins:016X})")
+        self.pins = self.z80.tick(self.pins)
+        print(f"pyse::CPU::tick 2: pins = {self.pins} (0x{self.pins:016X})")
+        self.transact()
+        
+    def transact(self):
+        """Handle memory and IO transactions based on pin state"""
+        if self.z80.is_mreq():  # Memory request
+            addr = self.z80.addr
+            if self.z80.is_rd():  # Memory read
+                data = self.memory.read(addr)
+                print(f"Read from {addr:04X} = {data:02X}")
+                print(f"Before Z80_SET_DATA: pins={self.pins:016X}, data={data:02X}")
+                # Check Z80_PIN_D0 value
+                print(f"Z80_PIN_D0 = {Z80_PIN_D0}")
+                # Try swapping parameters if needed
+                self.pins = Z80_SET_DATA(self.pins, data)
+            elif self.z80.is_wr():  # Memory write
+                data = self.z80.data
+                self.memory.write(addr, data)
+        elif self.z80.is_iorq():  # IO request
+            if self.z80.is_m1():  # Interrupt acknowledge
+                self.pins = Z80_SET_DATA(self.pins, 0xFF)
+            else:
+                addr = self.z80.addr
+                if self.z80.is_rd():  # IO read
+                    self.pins = Z80_SET_DATA(self.pins, 0xFF)
+                elif self.z80.is_wr():  # IO write
+                    pass
+    
+    def interrupt(self, status=True):
+        """Set or clear the interrupt pin"""
+        if status:
+            self.pins = Z80_SET_DATA(self.pins, Z80_INT)
+        else:
+            self.pins = Z80_SET_DATA(self.pins, 0)
+            
+    def set_pc(self, addr):
+        """Set the program counter to a specific address"""
+        self.pins = self.z80.prefetch(addr)
+
+
+# -----------------------------------------------------------------------------
 # ULA (Uncommitted Logic Array) class: Handles display generation and timing
 class ULA:
     # Display generation constants
@@ -407,6 +477,7 @@ class System:
         # Initialize components
         self.crt = CRT()
         self.memory = Memory()
+        self.cpu = CPU(self.memory)
         self.ula = ULA(self.memory, self.crt)
         
         # Timing variables
@@ -446,6 +517,7 @@ class System:
             # Process a chunk of emulation
             target_t_state = self.current_t_state + self.CHUNK_SIZE
             while self.current_t_state < target_t_state:
+                self.cpu.tick()
                 self.ula.tick()
                 self.current_t_state += 1
             
@@ -495,50 +567,44 @@ def main():
         print(f"SDL_Init Error: {sdl2.SDL_GetError().decode()}", file=sys.stderr)
         return 1
 
-    try:
-        # Parse command line arguments
-        system = System()
-        
-        # Track if a ROM has been loaded
-        rom_loaded = False
-        
-        # Handle command line arguments for loading files
-        if len(sys.argv) > 1:
-            for arg in sys.argv[1:]:
-                if arg == "-h" or arg == "--help":
-                    print(f"Usage: {sys.argv[0]} [options] [filename...]")
-                    print("Options:")
-                    print("  -h, --help           Display command information")
-                    print("Available file formats:")
-                    print("  .scr                 Screen data (6912 bytes)")
-                    print("  .rom                 System ROM (16384 bytes)")
-                    print("Default ROM '48.rom' will be loaded if no ROM specified.")
-                    return 0
-                elif arg.endswith(".scr"):
-                    print(f"Loading screen file: {arg}")
-                    system.load_scr(arg)
-                elif arg.endswith(".rom"):
-                    print(f"Loading ROM file: {arg}")
-                    system.load_rom(arg)
-                    rom_loaded = True
-                else:
-                    print(f"Unknown file type: {arg}", file=sys.stderr)
-        
-        # Load default ROM if no ROM was specified
-        if not rom_loaded:
-            try:
-                print("Loading default ROM: 48.rom")
-                system.load_rom("48.rom")
-            except Exception as e:
-                print(f"Error loading default ROM: {e}", file=sys.stderr)
-        
-        system.run()
-    except Exception as ex:
-        print(f"Exception caught: {ex}", file=sys.stderr)
-        sdl2.SDL_Quit()
-        return 1
-    finally:
-        sdl2.SDL_Quit()
+    # Parse command line arguments
+    system = System()
+    
+    # Track if a ROM has been loaded
+    rom_loaded = False
+    
+    # Handle command line arguments for loading files
+    if len(sys.argv) > 1:
+        for arg in sys.argv[1:]:
+            if arg == "-h" or arg == "--help":
+                print(f"Usage: {sys.argv[0]} [options] [filename...]")
+                print("Options:")
+                print("  -h, --help           Display command information")
+                print("Available file formats:")
+                print("  .scr                 Screen data (6912 bytes)")
+                print("  .rom                 System ROM (16384 bytes)")
+                print("Default ROM '48.rom' will be loaded if no ROM specified.")
+                return 0
+            elif arg.endswith(".scr"):
+                print(f"Loading screen file: {arg}")
+                system.load_scr(arg)
+                rom_loaded = True
+            elif arg.endswith(".rom"):
+                print(f"Loading ROM file: {arg}")
+                system.load_rom(arg)
+                rom_loaded = True
+            else:
+                print(f"Unknown file type: {arg}", file=sys.stderr)
+    
+    # Load default ROM if no ROM was specified
+    if not rom_loaded:
+        try:
+            print("Loading default ROM: 48.rom")
+            system.load_rom("48.rom")
+        except Exception as e:
+            print(f"Error loading default ROM: {e}", file=sys.stderr)
+    
+    system.run()
     
     return 0
 
