@@ -414,6 +414,47 @@ class CPU:
     def set_pc(self, addr):
         """Set the program counter to a specific address"""
         self.pins = self.z80.prefetch(addr)
+        
+    def set_register_i(self, value):
+        """Set Z80 I register"""
+        self.z80.i = value
+        
+    def set_register_r(self, value):
+        """Set Z80 R register"""
+        self.z80.r = value
+        
+    def set_register_iff2(self, value):
+        """Set Z80 IFF2 flag (enable/disable interrupts)"""
+        self.z80.iff2 = value
+        
+    def set_register_im(self, value):
+        """Set Z80 interrupt mode (0/1/2)"""
+        self.z80.im = value
+        
+    def set_register_pair(self, pair_name, value):
+        """Set a register pair (HL, DE, BC, AF, IX, IY, SP)"""
+        if pair_name == 'hl':
+            self.z80.hl = value
+        elif pair_name == 'de':
+            self.z80.de = value
+        elif pair_name == 'bc':
+            self.z80.bc = value
+        elif pair_name == 'af':
+            self.z80.af = value
+        elif pair_name == 'ix':
+            self.z80.ix = value
+        elif pair_name == 'iy':
+            self.z80.iy = value
+        elif pair_name == 'sp':
+            self.z80.sp = value
+        elif pair_name == 'hl_alt' or pair_name == 'hl2':
+            self.z80.hl2 = value
+        elif pair_name == 'de_alt' or pair_name == 'de2':
+            self.z80.de2 = value
+        elif pair_name == 'bc_alt' or pair_name == 'bc2':
+            self.z80.bc2 = value
+        elif pair_name == 'af_alt' or pair_name == 'af2':
+            self.z80.af2 = value
 
 
 # -----------------------------------------------------------------------------
@@ -657,28 +698,26 @@ class System:
                 if len(data) < 27:
                     raise RuntimeError(f"Invalid SNA file: too small")
                 
-                # Store the registers
-                registers = {
-                    'i': data[0],
-                    'hl_alt': (data[2] << 8) | data[1],
-                    'de_alt': (data[4] << 8) | data[3],
-                    'bc_alt': (data[6] << 8) | data[5],
-                    'af_alt': (data[8] << 8) | data[7],
-                    'hl': (data[10] << 8) | data[9],
-                    'de': (data[12] << 8) | data[11],
-                    'bc': (data[14] << 8) | data[13],
-                    'iy': (data[16] << 8) | data[15],
-                    'ix': (data[18] << 8) | data[17],
-                    'iff2': (data[19] & 0x04) != 0,
-                    'r': data[20],
-                    'af': (data[22] << 8) | data[21],
-                    'sp': (data[24] << 8) | data[23],
-                    'im': data[25],
-                    'border': data[26] & 0x07
-                }
+                # Extract register values from SNA data
+                i_reg = data[0]
+                hl_alt = (data[2] << 8) | data[1]
+                de_alt = (data[4] << 8) | data[3]
+                bc_alt = (data[6] << 8) | data[5]
+                af_alt = (data[8] << 8) | data[7]
+                hl = (data[10] << 8) | data[9]
+                de = (data[12] << 8) | data[11]
+                bc = (data[14] << 8) | data[13]
+                iy = (data[16] << 8) | data[15]
+                ix = (data[18] << 8) | data[17]
+                iff2 = (data[19] & 0x04) != 0
+                r_reg = data[20]
+                af = (data[22] << 8) | data[21]
+                sp = (data[24] << 8) | data[23]
+                im = data[25]
+                border = data[26] & 0x07
                 
                 # Set the border color
-                self.ula.set_border_color(registers['border'])
+                self.ula.set_border_color(border)
                 
                 # Load the RAM image (49152 bytes, starting at 0x4000)
                 if len(data) >= 49179:
@@ -687,8 +726,26 @@ class System:
                 else:
                     raise RuntimeError(f"Invalid SNA file: not enough memory data")
                 
-                # TODO: Set CPU registers from the snapshot data
-                # For now, we'll just set PC to 0x0072 (RETN address in ROM)
+                # Set CPU registers
+                self.cpu.set_register_i(i_reg)
+                self.cpu.set_register_r(r_reg)
+                self.cpu.set_register_iff2(iff2)
+                self.cpu.set_register_im(im)
+                
+                # Set register pairs
+                self.cpu.set_register_pair('hl_alt', hl_alt)
+                self.cpu.set_register_pair('de_alt', de_alt)
+                self.cpu.set_register_pair('bc_alt', bc_alt)
+                self.cpu.set_register_pair('af_alt', af_alt)
+                self.cpu.set_register_pair('hl', hl)
+                self.cpu.set_register_pair('de', de)
+                self.cpu.set_register_pair('bc', bc)
+                self.cpu.set_register_pair('iy', iy)
+                self.cpu.set_register_pair('ix', ix)
+                self.cpu.set_register_pair('af', af)
+                self.cpu.set_register_pair('sp', sp)
+                
+                # Set PC to 0x0072 (standard RETN address in ROM)
                 self.cpu.set_pc(0x0072)
                 
         except Exception as e:
