@@ -89,14 +89,14 @@ class CRT:
         
         # Spectrum color palette (RGBA format)
         self.rgba_color_table = np.array([
-            0x00000000,  # Black
-            0x0000FF00,  # Blue
-            0xFF000000,  # Red
-            0xFF00FF00,  # Magenta
-            0x00FF0000,  # Green
-            0x00FFFF00,  # Cyan
-            0xFFFF0000,  # Yellow
-            0xFFFFFF00   # White
+            0x000000FF,  # Black
+            0x0000FFFF,  # Blue
+            0xFF0000FF,  # Red
+            0xFF00FFFF,  # Magenta
+            0x00FF00FF,  # Green
+            0x00FFFFFF,  # Cyan
+            0xFFFF00FF,  # Yellow
+            0xFFFFFFFF   # White
         ], dtype=np.uint32)
 
     def __del__(self):
@@ -372,7 +372,6 @@ class CPU:
         # print(f"pyse::CPU::tick 1: pins = {self.pins} (0x{self.pins:016X})")
         self.pins = self.z80.tick(self.pins)
         # print(f"pyse::CPU::tick 2: pins = {self.pins} (0x{self.pins:016X})")
-        self.transact()
         
     def transact(self):
         """Handle memory and IO transactions based on pin state"""
@@ -534,6 +533,8 @@ class ULA(IODevice):
                     # In border area - display border color
                     border_attr = (self.border_color << 3)  # Border color as paper
                     self.crt.update_pixels(self.line, self.current_column, 0x00, border_attr)
+        
+        self.cpu.transact()
         
         # Update position counters
         self.line_cycle += 1
