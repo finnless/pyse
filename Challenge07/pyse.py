@@ -407,9 +407,9 @@ class CPU:
     def interrupt(self, status=True):
         """Set or clear the interrupt pin"""
         if status:
-            self.pins = Z80_SET_DATA(self.pins, Z80_INT)
+            self.pins |= Z80_INT  # Set interrupt pin
         else:
-            self.pins = Z80_SET_DATA(self.pins, 0)
+            self.pins &= ~Z80_INT  # Clear interrupt pin
             
     def set_pc(self, addr):
         """Set the program counter to a specific address"""
