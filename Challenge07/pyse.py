@@ -443,13 +443,13 @@ class CPU:
         elif pair_name == 'sp':
             self.z80.sp = value
         elif pair_name == 'hl_alt' or pair_name == 'hl2':
-            self.z80.hl2 = value
+            self.z80.hl_prime = value
         elif pair_name == 'de_alt' or pair_name == 'de2':
-            self.z80.de2 = value
+            self.z80.de_prime = value
         elif pair_name == 'bc_alt' or pair_name == 'bc2':
-            self.z80.bc2 = value
+            self.z80.bc_prime = value
         elif pair_name == 'af_alt' or pair_name == 'af2':
-            self.z80.af2 = value
+            self.z80.af_prime = value
 
 
 # -----------------------------------------------------------------------------

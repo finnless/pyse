@@ -42,7 +42,27 @@ bool z80_get_iff2(z80_t* cpu) { return cpu->iff2; }
 // Optional: Setters if needed for testing/setup
 void z80_set_pc(z80_t* cpu, uint16_t val) { cpu->pc = val; }
 void z80_set_sp(z80_t* cpu, uint16_t val) { cpu->sp = val; }
-// ... add setters for af, bc, de, hl, ix, iy etc. if required ...
+
+// Add the missing setters for registers
+void z80_set_af(z80_t* cpu, uint16_t val) { cpu->af = val; }
+void z80_set_bc(z80_t* cpu, uint16_t val) { cpu->bc = val; }
+void z80_set_de(z80_t* cpu, uint16_t val) { cpu->de = val; }
+void z80_set_hl(z80_t* cpu, uint16_t val) { cpu->hl = val; }
+void z80_set_ix(z80_t* cpu, uint16_t val) { cpu->ix = val; }
+void z80_set_iy(z80_t* cpu, uint16_t val) { cpu->iy = val; }
+
+void z80_set_af_prime(z80_t* cpu, uint16_t val) { cpu->af2 = val; }
+void z80_set_bc_prime(z80_t* cpu, uint16_t val) { cpu->bc2 = val; }
+void z80_set_de_prime(z80_t* cpu, uint16_t val) { cpu->de2 = val; }
+void z80_set_hl_prime(z80_t* cpu, uint16_t val) { cpu->hl2 = val; }
+
+void z80_set_i(z80_t* cpu, uint8_t val) { cpu->i = val; }
+void z80_set_r(z80_t* cpu, uint8_t val) { cpu->r = val; }
+void z80_set_im(z80_t* cpu, uint8_t val) { cpu->im = val; }
+void z80_set_iff1(z80_t* cpu, bool val) { cpu->iff1 = val; }
+void z80_set_iff2(z80_t* cpu, bool val) { cpu->iff2 = val; }
+
+// Legacy function - can be used if the above individual setters are not available
 void z80_set_reg16(z80_t* cpu, int reg_id, uint16_t val) {
     // Could use an enum/defines for reg_id (0=AF, 1=BC, etc.)
     switch(reg_id) {

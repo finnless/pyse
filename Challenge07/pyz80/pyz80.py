@@ -116,38 +116,89 @@ class Z80:
     # --- Register Access (using C helpers) ---
     @property
     def pc(self): return z80_lib.z80_get_pc(self._state_ptr)
+    @pc.setter
+    def pc(self, value): z80_lib.z80_set_pc(self._state_ptr, value)
+    
     @property
     def sp(self): return z80_lib.z80_get_sp(self._state_ptr)
+    @sp.setter
+    def sp(self, value): z80_lib.z80_set_sp(self._state_ptr, value)
+    
     @property
     def af(self): return z80_lib.z80_get_af(self._state_ptr)
+    @af.setter
+    def af(self, value): z80_lib.z80_set_af(self._state_ptr, value)
+    
     @property
     def bc(self): return z80_lib.z80_get_bc(self._state_ptr)
+    @bc.setter
+    def bc(self, value): z80_lib.z80_set_bc(self._state_ptr, value)
+    
     @property
     def de(self): return z80_lib.z80_get_de(self._state_ptr)
+    @de.setter
+    def de(self, value): z80_lib.z80_set_de(self._state_ptr, value)
+    
     @property
     def hl(self): return z80_lib.z80_get_hl(self._state_ptr)
+    @hl.setter
+    def hl(self, value): z80_lib.z80_set_hl(self._state_ptr, value)
+    
     @property
     def ix(self): return z80_lib.z80_get_ix(self._state_ptr)
+    @ix.setter
+    def ix(self, value): z80_lib.z80_set_ix(self._state_ptr, value)
+    
     @property
     def iy(self): return z80_lib.z80_get_iy(self._state_ptr)
+    @iy.setter
+    def iy(self, value): z80_lib.z80_set_iy(self._state_ptr, value)
+    
     @property
     def af_prime(self): return z80_lib.z80_get_af_prime(self._state_ptr)
+    @af_prime.setter
+    def af_prime(self, value): z80_lib.z80_set_af_prime(self._state_ptr, value)
+    
     @property
     def bc_prime(self): return z80_lib.z80_get_bc_prime(self._state_ptr)
+    @bc_prime.setter
+    def bc_prime(self, value): z80_lib.z80_set_bc_prime(self._state_ptr, value)
+    
     @property
     def de_prime(self): return z80_lib.z80_get_de_prime(self._state_ptr)
+    @de_prime.setter
+    def de_prime(self, value): z80_lib.z80_set_de_prime(self._state_ptr, value)
+    
     @property
     def hl_prime(self): return z80_lib.z80_get_hl_prime(self._state_ptr)
+    @hl_prime.setter
+    def hl_prime(self, value): z80_lib.z80_set_hl_prime(self._state_ptr, value)
+    
     @property
-    def I(self): return z80_lib.z80_get_i(self._state_ptr)
+    def i(self): return z80_lib.z80_get_i(self._state_ptr)
+    @i.setter
+    def i(self, value): z80_lib.z80_set_i(self._state_ptr, value)
+    
     @property
-    def R(self): return z80_lib.z80_get_r(self._state_ptr)
+    def r(self): return z80_lib.z80_get_r(self._state_ptr)
+    @r.setter
+    def r(self, value): z80_lib.z80_set_r(self._state_ptr, value)
+    
     @property
     def im(self): return z80_lib.z80_get_im(self._state_ptr)
+    @im.setter
+    def im(self, value): z80_lib.z80_set_im(self._state_ptr, value)
+    
     @property
     def iff1(self): return z80_lib.z80_get_iff1(self._state_ptr)
+    @iff1.setter
+    def iff1(self, value): z80_lib.z80_set_iff1(self._state_ptr, value)
+    
     @property
     def iff2(self): return z80_lib.z80_get_iff2(self._state_ptr)
+    @iff2.setter
+    def iff2(self, value): z80_lib.z80_set_iff2(self._state_ptr, value)
+    
     @property
     def wz(self): return z80_lib.z80_get_wz(self._state_ptr) # If needed
 
@@ -186,7 +237,7 @@ class Z80:
             "IX": f"{self.ix:04X}", "IY": f"{self.iy:04X}",
             "AF'": f"{self.af_prime:04X}", "BC'": f"{self.bc_prime:04X}",
             "DE'": f"{self.de_prime:04X}", "HL'": f"{self.hl_prime:04X}",
-            "I": f"{self.I:02X}", "R": f"{self.R:02X}", "IM": self.im,
+            "I": f"{self.i:02X}", "R": f"{self.r:02X}", "IM": self.im,
             "IFF1": self.iff1, "IFF2": self.iff2,
             "WZ": f"{self.wz:04X}", # If wz helper exists
             "Flags": f"{'S' if self.sf else '-'}{'Z' if self.zf else '-'}{'Y' if self.yf else '-'}{'H' if self.hf else '-'}{'X' if self.xf else '-'}{'P' if self.pf else '-'}{'N' if self.nf else '-'}{'C' if self.cf else '-'}" ,

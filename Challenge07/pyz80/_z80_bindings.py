@@ -253,5 +253,50 @@ def setup_prototypes(lib):
     lib.z80_set_sp.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
     lib.z80_set_sp.restype = None
 
+    lib.z80_set_af.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_af.restype = None
+
+    lib.z80_set_bc.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_bc.restype = None
+
+    lib.z80_set_de.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_de.restype = None
+
+    lib.z80_set_hl.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_hl.restype = None
+
+    lib.z80_set_ix.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_ix.restype = None
+
+    lib.z80_set_iy.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_iy.restype = None
+
+    lib.z80_set_af_prime.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_af_prime.restype = None
+
+    lib.z80_set_bc_prime.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_bc_prime.restype = None
+
+    lib.z80_set_de_prime.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_de_prime.restype = None
+
+    lib.z80_set_hl_prime.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint16]
+    lib.z80_set_hl_prime.restype = None
+
+    lib.z80_set_i.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint8]
+    lib.z80_set_i.restype = None
+
+    lib.z80_set_r.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint8]
+    lib.z80_set_r.restype = None
+
+    lib.z80_set_im.argtypes = [ctypes.POINTER(z80_t), ctypes.c_uint8]
+    lib.z80_set_im.restype = None
+
+    lib.z80_set_iff1.argtypes = [ctypes.POINTER(z80_t), ctypes.c_bool]
+    lib.z80_set_iff1.restype = None
+
+    lib.z80_set_iff2.argtypes = [ctypes.POINTER(z80_t), ctypes.c_bool]
+    lib.z80_set_iff2.restype = None
+
     lib.z80_get_state_size.argtypes = []
     lib.z80_get_state_size.restype = ctypes.c_size_t

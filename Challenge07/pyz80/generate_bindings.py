@@ -31,9 +31,24 @@ LIB_FUNCTIONS = [ # List C functions to create prototypes for
     "uint8_t z80_get_im(z80_t* cpu)",
     "bool z80_get_iff1(z80_t* cpu)",
     "bool z80_get_iff2(z80_t* cpu)",
-    # Add setters if you defined them
+    # Add setters for all registers
     "void z80_set_pc(z80_t* cpu, uint16_t val)",
     "void z80_set_sp(z80_t* cpu, uint16_t val)",
+    "void z80_set_af(z80_t* cpu, uint16_t val)",
+    "void z80_set_bc(z80_t* cpu, uint16_t val)",
+    "void z80_set_de(z80_t* cpu, uint16_t val)",
+    "void z80_set_hl(z80_t* cpu, uint16_t val)",
+    "void z80_set_ix(z80_t* cpu, uint16_t val)",
+    "void z80_set_iy(z80_t* cpu, uint16_t val)",
+    "void z80_set_af_prime(z80_t* cpu, uint16_t val)",
+    "void z80_set_bc_prime(z80_t* cpu, uint16_t val)",
+    "void z80_set_de_prime(z80_t* cpu, uint16_t val)",
+    "void z80_set_hl_prime(z80_t* cpu, uint16_t val)",
+    "void z80_set_i(z80_t* cpu, uint8_t val)",
+    "void z80_set_r(z80_t* cpu, uint8_t val)",
+    "void z80_set_im(z80_t* cpu, uint8_t val)",
+    "void z80_set_iff1(z80_t* cpu, bool val)",
+    "void z80_set_iff2(z80_t* cpu, bool val)",
     # Size function
     "size_t z80_get_state_size(void)",
 ]
