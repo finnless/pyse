@@ -683,60 +683,74 @@ class System:
         27      49152 bytes  RAM dump 16384..65535
         """
         with open(filename, 'rb') as f:
-            # Typical SNA is 49179 bytes
-            data = f.read()
-            if len(data) < 27:
-                raise RuntimeError(f"Invalid SNA file: too small")
+            # Set PC first
+            self.cpu.set_pc(0x0072)
             
-            # Extract register values from SNA data
-            i_reg = data[0]
-            hl_alt = (data[2] << 8) | data[1]
-            de_alt = (data[4] << 8) | data[3]
-            bc_alt = (data[6] << 8) | data[5]
-            af_alt = (data[8] << 8) | data[7]
-            hl = (data[10] << 8) | data[9]
-            de = (data[12] << 8) | data[11]
-            bc = (data[14] << 8) | data[13]
-            iy = (data[16] << 8) | data[15]
-            ix = (data[18] << 8) | data[17]
-            iff2 = (data[19] & 0x04) != 0
-            r_reg = data[20]
-            af = (data[22] << 8) | data[21]
-            sp = (data[24] << 8) | data[23]
-            im = data[25]
-            border = data[26] & 0x07
-            
-            # Set the border color
-            self.ula.set_border_color(border)
-            
-            # Load the RAM image (49152 bytes, starting at 0x4000)
-            if len(data) >= 49179:
-                ram_data = data[27:49179]
-                self.memory.ram[0x4000:0x10000] = np.frombuffer(ram_data, dtype=np.uint8)
-            else:
-                raise RuntimeError(f"Invalid SNA file: not enough memory data")
-            
-            # Set CPU registers
+            # Read data directly in the same order as the reference
+            # I register
+            i_reg = int.from_bytes(f.read(1), byteorder='little')
             self.cpu.set_register_i(i_reg)
-            self.cpu.set_register_r(r_reg)
-            self.cpu.set_register_iff2(iff2)
-            self.cpu.set_register_im(im)
             
-            # Set register pairs
+            # Alternate register set (HL', DE', BC', AF')
+            hl_alt = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('hl_alt', hl_alt)
+            
+            de_alt = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('de_alt', de_alt)
+            
+            bc_alt = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('bc_alt', bc_alt)
+            
+            af_alt = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('af_alt', af_alt)
+            
+            # Main register set (HL, DE, BC, IY, IX)
+            hl = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('hl', hl)
+            
+            de = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('de', de)
+            
+            bc = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('bc', bc)
+            
+            iy = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('iy', iy)
+            
+            ix = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('ix', ix)
+            
+            # Interrupt flag
+            interrupt_byte = int.from_bytes(f.read(1), byteorder='little')
+            iff2 = (interrupt_byte & 0x04) != 0
+            self.cpu.set_register_iff2(iff2)
+            
+            # R register
+            r_reg = int.from_bytes(f.read(1), byteorder='little')
+            self.cpu.set_register_r(r_reg)
+            
+            # AF and SP
+            af = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('af', af)
+            
+            sp = int.from_bytes(f.read(2), byteorder='little')
             self.cpu.set_register_pair('sp', sp)
             
-            # Set PC to 0x0072 (standard RETN address in ROM)
-            self.cpu.set_pc(0x0072)
+            # Interrupt mode
+            im = int.from_bytes(f.read(1), byteorder='little')
+            self.cpu.set_register_im(im)
+            
+            # Border color
+            border = int.from_bytes(f.read(1), byteorder='little') & 0x07
+            self.ula.set_border_color(border)
+            
+            # Load RAM directly
+            ram_data = f.read(49152)
+            if len(ram_data) < 49152:
+                raise RuntimeError(f"Invalid SNA file: not enough memory data")
+            
+            # Load into RAM
+            self.memory.ram[0x4000:0x10000] = np.frombuffer(ram_data, dtype=np.uint8)
 
 
 # -----------------------------------------------------------------------------
