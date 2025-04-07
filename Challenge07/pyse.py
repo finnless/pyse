@@ -273,6 +273,13 @@ class Memory:
         """Write a byte to memory, with ROM protection"""
         if address < 0x4000:
             return  # Ignore writes to ROM
+            
+        # Track writes to screen memory (0x4000-0x5AFF)
+        if 0x4000 <= address <= 0x5AFF:
+            # Print only a small number of screen writes to avoid overwhelming output
+            if (address & 0xFF) == 0:
+                print(f"Screen write: 0x{address:04X} = 0x{value:02X}")
+                
         self.ram[address] = value
     
     def load_from_file(self, filename, addr, size):
@@ -363,11 +370,22 @@ class CPU:
         self.z80 = Z80()
         self.pins = self.z80.pins
         
+    def get_state_summary(self):
+        """Get a clean summary of the CPU state"""
+        return str(self.z80)
+        
     def tick(self):
         """Process one CPU cycle"""
         # print(f"pyse::CPU::tick 1: pins = {self.pins} (0x{self.pins:016X})")
         self.pins = self.z80.tick(self.pins)
         # print(f"pyse::CPU::tick 2: pins = {self.pins} (0x{self.pins:016X})")
+        
+        # Monitor state after interrupt (with countdown to avoid too much output)
+        if hasattr(self, 'check_state_after_interrupt'):
+            self.check_state_after_interrupt -= 1
+            if self.check_state_after_interrupt == 0:
+                print(f"CPU State after interrupt handling: {self.get_state_summary()}")
+                delattr(self, 'check_state_after_interrupt')
         
     def transact(self):
         """Handle memory and IO transactions based on pin state"""
@@ -375,18 +393,17 @@ class CPU:
             addr = self.z80.addr
             if self.z80.is_rd():  # Memory read
                 data = self.memory.read(addr)
-                # print(f"Read from {addr:04X} = {data:02X}")
-                # print(f"Before Z80_SET_DATA: pins={self.pins:016X}, data={data:02X}")
-                # Check Z80_PIN_D0 value
-                # print(f"Z80_PIN_D0 = {Z80_PIN_D0}")
-                # Try swapping parameters if needed
                 self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
             elif self.z80.is_wr():  # Memory write
                 data = self.z80.data
                 self.memory.write(addr, data)
         elif self.z80.is_iorq():  # IO request
             if self.z80.is_m1():  # Interrupt acknowledge
+                print(f"CPU: Interrupt acknowledged")
+                print(f"CPU State: {self.get_state_summary()}")
                 self.pins = Z80_SET_DATA(int(self.pins), 0xFF)
+                # Set a flag to check state after a few cycles
+                self.check_state_after_interrupt = 100  # Check after 100 cycles
             else:
                 addr = self.z80.addr
                 if self.z80.is_rd():  # IO read
@@ -402,8 +419,11 @@ class CPU:
     def interrupt(self, status=True):
         """Set or clear the interrupt pin"""
         if status:
+            print(f"CPU: Setting interrupt pin (INT=1)")
+            print(f"CPU State: {self.get_state_summary()}")
             self.pins |= Z80_INT  # Set interrupt pin
         else:
+            print(f"CPU: Clearing interrupt pin (INT=0)")
             self.pins &= ~Z80_INT  # Clear interrupt pin
             
     def set_pc(self, addr):
@@ -538,9 +558,11 @@ class ULA(IODevice):
         # Generate interrupts at the start of the frame
         if self.line == 0 and self.line_cycle == self.BORDER_T_STATES:
             # Generate CPU interrupt
+            print(f"ULA: Generating interrupt")
             self.cpu.interrupt(True)
         elif self.line == 0 and self.line_cycle == self.BORDER_T_STATES + self.INTERRUPT_DURATION:
             # End of interrupt
+            print(f"ULA: Ending interrupt")
             self.cpu.interrupt(False)
             
         # Check if we've reached the end of a line
@@ -724,6 +746,11 @@ class System:
             interrupt_byte = int.from_bytes(f.read(1), byteorder='little')
             iff2 = (interrupt_byte & 0x04) != 0
             self.cpu.set_register_iff2(iff2)
+            
+            # IFF1 needs to be set as well for interrupts to work
+            # In Z80, interrupts are enabled when IFF1 is set
+            print(f"Setting interrupt flags: IFF2={iff2}, setting IFF1 to same value")
+            self.cpu.z80.iff1 = iff2  # Set IFF1 to same value as IFF2
             
             # R register
             r_reg = int.from_bytes(f.read(1), byteorder='little')
