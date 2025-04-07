@@ -277,23 +277,19 @@ class Memory:
     
     def load_from_file(self, filename, addr, size):
         """Load binary data from a file into memory"""
-        try:
-            with open(filename, 'rb') as f:
-                # Get file size
-                f.seek(0, 2)  # Seek to end
-                file_size = f.tell()
-                f.seek(0)     # Seek back to beginning
-                
-                # Check if we have enough data
-                if file_size < size:
-                    raise RuntimeError(f"File too small: need at least {size} bytes")
-                
-                # Read data into memory
-                data = f.read(size)
-                self.ram[addr:addr+size] = np.frombuffer(data, dtype=np.uint8)
-                
-        except Exception as e:
-            raise RuntimeError(f"Could not load file {filename}: {e}")
+        with open(filename, 'rb') as f:
+            # Get file size
+            f.seek(0, 2)  # Seek to end
+            file_size = f.tell()
+            f.seek(0)     # Seek back to beginning
+            
+            # Check if we have enough data
+            if file_size < size:
+                raise RuntimeError(f"File too small: need at least {size} bytes")
+            
+            # Read data into memory
+            data = f.read(size)
+            self.ram[addr:addr+size] = np.frombuffer(data, dtype=np.uint8)
             
     def calculate_display_address(self, line, col):
         """Calculate the memory address for a display byte using Spectrum's screen layout"""
@@ -664,17 +660,11 @@ class System:
     
     def load_scr(self, filename):
         """Load a .scr screen file"""
-        try:
-            self.memory.load_from_file(filename, 0x4000, 6912)
-        except Exception as e:
-            print(f"Error loading SCR file: {e}", file=sys.stderr)
+        self.memory.load_from_file(filename, 0x4000, 6912)
             
     def load_rom(self, filename):
         """Load a ROM file into memory at address 0x0000"""
-        try:
-            self.memory.load_from_file(filename, 0x0000, 16384)  # 16KB ROM
-        except Exception as e:
-            print(f"Error loading ROM file: {e}", file=sys.stderr)
+        self.memory.load_from_file(filename, 0x0000, 16384)  # 16KB ROM
             
     def load_sna(self, filename):
         """Load a .sna snapshot file
@@ -692,65 +682,61 @@ class System:
         26      1     byte   BorderColor (0..7)
         27      49152 bytes  RAM dump 16384..65535
         """
-        try:
-            with open(filename, 'rb') as f:
-                # Typical SNA is 49179 bytes
-                data = f.read()
-                if len(data) < 27:
-                    raise RuntimeError(f"Invalid SNA file: too small")
-                
-                # Extract register values from SNA data
-                i_reg = data[0]
-                hl_alt = (data[2] << 8) | data[1]
-                de_alt = (data[4] << 8) | data[3]
-                bc_alt = (data[6] << 8) | data[5]
-                af_alt = (data[8] << 8) | data[7]
-                hl = (data[10] << 8) | data[9]
-                de = (data[12] << 8) | data[11]
-                bc = (data[14] << 8) | data[13]
-                iy = (data[16] << 8) | data[15]
-                ix = (data[18] << 8) | data[17]
-                iff2 = (data[19] & 0x04) != 0
-                r_reg = data[20]
-                af = (data[22] << 8) | data[21]
-                sp = (data[24] << 8) | data[23]
-                im = data[25]
-                border = data[26] & 0x07
-                
-                # Set the border color
-                self.ula.set_border_color(border)
-                
-                # Load the RAM image (49152 bytes, starting at 0x4000)
-                if len(data) >= 49179:
-                    ram_data = data[27:49179]
-                    self.memory.ram[0x4000:0x10000] = np.frombuffer(ram_data, dtype=np.uint8)
-                else:
-                    raise RuntimeError(f"Invalid SNA file: not enough memory data")
-                
-                # Set CPU registers
-                self.cpu.set_register_i(i_reg)
-                self.cpu.set_register_r(r_reg)
-                self.cpu.set_register_iff2(iff2)
-                self.cpu.set_register_im(im)
-                
-                # Set register pairs
-                self.cpu.set_register_pair('hl_alt', hl_alt)
-                self.cpu.set_register_pair('de_alt', de_alt)
-                self.cpu.set_register_pair('bc_alt', bc_alt)
-                self.cpu.set_register_pair('af_alt', af_alt)
-                self.cpu.set_register_pair('hl', hl)
-                self.cpu.set_register_pair('de', de)
-                self.cpu.set_register_pair('bc', bc)
-                self.cpu.set_register_pair('iy', iy)
-                self.cpu.set_register_pair('ix', ix)
-                self.cpu.set_register_pair('af', af)
-                self.cpu.set_register_pair('sp', sp)
-                
-                # Set PC to 0x0072 (standard RETN address in ROM)
-                self.cpu.set_pc(0x0072)
-                
-        except Exception as e:
-            print(f"Error loading SNA file: {e}", file=sys.stderr)
+        with open(filename, 'rb') as f:
+            # Typical SNA is 49179 bytes
+            data = f.read()
+            if len(data) < 27:
+                raise RuntimeError(f"Invalid SNA file: too small")
+            
+            # Extract register values from SNA data
+            i_reg = data[0]
+            hl_alt = (data[2] << 8) | data[1]
+            de_alt = (data[4] << 8) | data[3]
+            bc_alt = (data[6] << 8) | data[5]
+            af_alt = (data[8] << 8) | data[7]
+            hl = (data[10] << 8) | data[9]
+            de = (data[12] << 8) | data[11]
+            bc = (data[14] << 8) | data[13]
+            iy = (data[16] << 8) | data[15]
+            ix = (data[18] << 8) | data[17]
+            iff2 = (data[19] & 0x04) != 0
+            r_reg = data[20]
+            af = (data[22] << 8) | data[21]
+            sp = (data[24] << 8) | data[23]
+            im = data[25]
+            border = data[26] & 0x07
+            
+            # Set the border color
+            self.ula.set_border_color(border)
+            
+            # Load the RAM image (49152 bytes, starting at 0x4000)
+            if len(data) >= 49179:
+                ram_data = data[27:49179]
+                self.memory.ram[0x4000:0x10000] = np.frombuffer(ram_data, dtype=np.uint8)
+            else:
+                raise RuntimeError(f"Invalid SNA file: not enough memory data")
+            
+            # Set CPU registers
+            self.cpu.set_register_i(i_reg)
+            self.cpu.set_register_r(r_reg)
+            self.cpu.set_register_iff2(iff2)
+            self.cpu.set_register_im(im)
+            
+            # Set register pairs
+            self.cpu.set_register_pair('hl_alt', hl_alt)
+            self.cpu.set_register_pair('de_alt', de_alt)
+            self.cpu.set_register_pair('bc_alt', bc_alt)
+            self.cpu.set_register_pair('af_alt', af_alt)
+            self.cpu.set_register_pair('hl', hl)
+            self.cpu.set_register_pair('de', de)
+            self.cpu.set_register_pair('bc', bc)
+            self.cpu.set_register_pair('iy', iy)
+            self.cpu.set_register_pair('ix', ix)
+            self.cpu.set_register_pair('af', af)
+            self.cpu.set_register_pair('sp', sp)
+            
+            # Set PC to 0x0072 (standard RETN address in ROM)
+            self.cpu.set_pc(0x0072)
 
 
 # -----------------------------------------------------------------------------
@@ -796,11 +782,8 @@ def main():
     
     # Load default ROM if no ROM was specified
     if not rom_loaded:
-        try:
-            print("Loading default ROM: 48.rom")
-            system.load_rom("48.rom")
-        except Exception as e:
-            print(f"Error loading default ROM: {e}", file=sys.stderr)
+        print("Loading default ROM: 48.rom")
+        system.load_rom("48.rom")
     
     system.run()
     
