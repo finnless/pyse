@@ -118,56 +118,9 @@ class CRT:
 
     def update_pixels(self, line, column, display_byte, attr_byte):
         """Update a group of 8 pixels based on display byte and attribute byte"""
-        # Skip if in blanking interval
-        if line < self.TOP_BLANKING or line >= (self.TOP_BLANKING + self.VISIBLE_LINES):
-            return
-            
-        # Adjust for top blanking
-        line -= self.TOP_BLANKING
-        
-        # Interlace fields (odd/even lines)
-        line = line * 2 + (1 if self.odd_field else 0)
-        
-        # Calculate pixel offset
-        offset_y = line
-        offset_x = column * 8
-        
-        # Calculate bleed line (for phosphor effect)
-        bleed_y = offset_y + (-1 if self.odd_field else 1)
-        bleed_y = max(0, min(bleed_y, self.CRT_LINES - 1))  # Clamp to valid range
-        
-        # Parse attribute byte
-        flash = (attr_byte & 0x80) != 0
-        bright = (attr_byte & 0x40) != 0
-        paper = (attr_byte >> 3) & 0x07
-        ink = attr_byte & 0x07
-        
-        # Handle flash attribute
-        if flash and self.flash_inverted:
-            paper, ink = ink, paper
-            
-        # Get colors from palette
-        paper_color = self.rgba_color_table[paper]
-        ink_color = self.rgba_color_table[ink]
-        
-        # Update 8 pixels (MSB is leftmost)
-        for bit in range(7, -1, -1):
-            pixel_set = (display_byte & (1 << bit)) != 0
-            color = ink_color if pixel_set else paper_color
-            
-            # Apply pixel to main scanline
-            pixel_x = offset_x + (7 - bit)
-            self.pixels[offset_y, pixel_x] = ((self.pixels[offset_y, pixel_x] >> 2) & 0x3F3F3F3F) | color
-            
-            # Apply bleed effect to adjacent scanline
-            if not bright:
-                # 50% brightness for non-bright colors
-                bleed_color = ((color >> 1) & 0x7F7F7F7F) | 0x000000FF
-            else:
-                # 84% brightness for bright colors (mimics phosphor persistence)
-                bleed_color = (((color >> 3) & 0x07070707) * 27) | 0x000000FF
-                
-            self.pixels[bleed_y, pixel_x] = ((self.pixels[bleed_y, pixel_x] >> 2) & 0x3F3F3F3F) | bleed_color
+        update_pixels_jit(self.pixels, line, column, display_byte, attr_byte,
+                          self.TOP_BLANKING, self.VISIBLE_LINES, self.TOTAL_WIDTH, self.CRT_LINES,
+                          self.odd_field, self.flash_inverted, self.rgba_color_table)
 
     def refresh(self):
         """Update the screen with current pixel data"""
@@ -251,6 +204,66 @@ def generate_test_pattern(pixels, width, height, color_table):
                                 is_ink = ((cx % 2) ^ ((cy // 2) % 2)) == 0
                                 
                             pixels[y, x] = color_table[ink_color if is_ink else paper_color]
+
+
+# JIT-compiled pixel update function for better performance
+@jit(nopython=True)
+def update_pixels_jit(pixels, line, column, display_byte, attr_byte, 
+                      top_blanking, visible_lines, total_width, crt_lines,
+                      odd_field, flash_inverted, rgba_color_table):
+    """Update a group of 8 pixels based on display byte and attribute byte with Numba acceleration"""
+    # Skip if in blanking interval
+    if line < top_blanking or line >= (top_blanking + visible_lines):
+        return
+        
+    # Adjust for top blanking
+    line -= top_blanking
+    
+    # Interlace fields (odd/even lines)
+    line = line * 2 + (1 if odd_field else 0)
+    
+    # Calculate pixel offset
+    offset_y = line
+    offset_x = column * 8
+    
+    # Calculate bleed line (for phosphor effect)
+    bleed_y = offset_y + (-1 if odd_field else 1)
+    bleed_y = max(0, min(bleed_y, crt_lines - 1))  # Clamp to valid range
+    
+    # Parse attribute byte
+    flash = (attr_byte & 0x80) != 0
+    bright = (attr_byte & 0x40) != 0
+    paper = (attr_byte >> 3) & 0x07
+    ink = attr_byte & 0x07
+    
+    # Handle flash attribute
+    if flash and flash_inverted:
+        temp = paper
+        paper = ink
+        ink = temp
+        
+    # Get colors from palette
+    paper_color = rgba_color_table[paper]
+    ink_color = rgba_color_table[ink]
+    
+    # Update 8 pixels (MSB is leftmost)
+    for bit in range(7, -1, -1):
+        pixel_set = (display_byte & (1 << bit)) != 0
+        color = ink_color if pixel_set else paper_color
+        
+        # Apply pixel to main scanline
+        pixel_x = offset_x + (7 - bit)
+        pixels[offset_y, pixel_x] = ((pixels[offset_y, pixel_x] >> 2) & 0x3F3F3F3F) | color
+        
+        # Apply bleed effect to adjacent scanline
+        if not bright:
+            # 50% brightness for non-bright colors
+            bleed_color = ((color >> 1) & 0x7F7F7F7F) | 0x000000FF
+        else:
+            # 84% brightness for bright colors (mimics phosphor persistence)
+            bleed_color = (((color >> 3) & 0x07070707) * 27) | 0x000000FF
+            
+        pixels[bleed_y, pixel_x] = ((pixels[bleed_y, pixel_x] >> 2) & 0x3F3F3F3F) | bleed_color
 
 
 # -----------------------------------------------------------------------------
