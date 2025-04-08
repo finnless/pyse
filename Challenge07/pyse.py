@@ -473,6 +473,180 @@ class CPU:
 
 
 # -----------------------------------------------------------------------------
+# Keyboard class: Handles keyboard input for the ZX Spectrum
+class Keyboard(IODevice):
+    """
+    ZX Spectrum Keyboard implementation
+    
+    The ZX Spectrum keyboard is arranged as an 8x5 matrix:
+    - 8 rows (0-7), each mapped to a specific address line
+    - 5 columns (bits 0-4), each representing a key within that row
+    
+    When reading the keyboard, the Z80 uses I/O port addresses where:
+    - The low byte is usually 0xFE
+    - The high byte has specific bits cleared to select the rows to read
+    
+    The port mapping is as follows:
+    | Port    | Row | Keys                   |
+    |---------|-----|------------------------|
+    | 0xFEFE  | 0   | CAPS, Z, X, C, V       |
+    | 0xFDFE  | 1   | A, S, D, F, G          |
+    | 0xFBFE  | 2   | Q, W, E, R, T          |
+    | 0xF7FE  | 3   | 1, 2, 3, 4, 5          |
+    | 0xEFFE  | 4   | 0, 9, 8, 7, 6          |
+    | 0xDFFE  | 5   | P, O, I, U, Y          |
+    | 0xBFFE  | 6   | ENTER, L, K, J, H      |
+    | 0x7FFE  | 7   | SPACE, SYM, M, N, B    |
+    
+    The keyboard state is represented as 8 bytes, one for each row.
+    Within each byte, bits 0-4 represent the 5 keys in that row.
+    A value of 0 means the key is pressed, 1 means not pressed.
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Initialize keyboard state (8 rows with 5 bits per row)
+        # In ZX Spectrum, 0=pressed, 1=not pressed, so initialize all to 0xFF (not pressed)
+        self.rows = [0xFF] * 8
+        
+        # Debug flag
+        self.debug_mode = False
+        
+        # Define mapping from SDL scancodes to ZX Spectrum keyboard positions
+        # Format: SDL_SCANCODE: (row, bit_mask)
+        self.key_map = {
+            # Row 0: CAPS SHIFT, Z, X, C, V
+            sdl2.SDL_SCANCODE_LSHIFT: (0, 0x01),
+            sdl2.SDL_SCANCODE_RSHIFT: (0, 0x01),  # Both shifts map to CAPS SHIFT
+            sdl2.SDL_SCANCODE_Z: (0, 0x02),
+            sdl2.SDL_SCANCODE_X: (0, 0x04),
+            sdl2.SDL_SCANCODE_C: (0, 0x08),
+            sdl2.SDL_SCANCODE_V: (0, 0x10),
+            
+            # Row 1: A, S, D, F, G
+            sdl2.SDL_SCANCODE_A: (1, 0x01),
+            sdl2.SDL_SCANCODE_S: (1, 0x02),
+            sdl2.SDL_SCANCODE_D: (1, 0x04),
+            sdl2.SDL_SCANCODE_F: (1, 0x08),
+            sdl2.SDL_SCANCODE_G: (1, 0x10),
+            
+            # Row 2: Q, W, E, R, T
+            sdl2.SDL_SCANCODE_Q: (2, 0x01),
+            sdl2.SDL_SCANCODE_W: (2, 0x02),
+            sdl2.SDL_SCANCODE_E: (2, 0x04),
+            sdl2.SDL_SCANCODE_R: (2, 0x08),
+            sdl2.SDL_SCANCODE_T: (2, 0x10),
+            
+            # Row 3: 1, 2, 3, 4, 5
+            sdl2.SDL_SCANCODE_1: (3, 0x01),
+            sdl2.SDL_SCANCODE_2: (3, 0x02),
+            sdl2.SDL_SCANCODE_3: (3, 0x04),
+            sdl2.SDL_SCANCODE_4: (3, 0x08),
+            sdl2.SDL_SCANCODE_5: (3, 0x10),
+            
+            # Row 4: 0, 9, 8, 7, 6
+            sdl2.SDL_SCANCODE_0: (4, 0x01),
+            sdl2.SDL_SCANCODE_9: (4, 0x02),
+            sdl2.SDL_SCANCODE_8: (4, 0x04),
+            sdl2.SDL_SCANCODE_7: (4, 0x08),
+            sdl2.SDL_SCANCODE_6: (4, 0x10),
+            
+            # Row 5: P, O, I, U, Y
+            sdl2.SDL_SCANCODE_P: (5, 0x01),
+            sdl2.SDL_SCANCODE_O: (5, 0x02),
+            sdl2.SDL_SCANCODE_I: (5, 0x04),
+            sdl2.SDL_SCANCODE_U: (5, 0x08),
+            sdl2.SDL_SCANCODE_Y: (5, 0x10),
+            
+            # Row 6: ENTER, L, K, J, H
+            sdl2.SDL_SCANCODE_RETURN: (6, 0x01),
+            sdl2.SDL_SCANCODE_L: (6, 0x02),
+            sdl2.SDL_SCANCODE_K: (6, 0x04),
+            sdl2.SDL_SCANCODE_J: (6, 0x08),
+            sdl2.SDL_SCANCODE_H: (6, 0x10),
+            
+            # Row 7: SPACE, SYM SHIFT (LCTRL), M, N, B
+            sdl2.SDL_SCANCODE_SPACE: (7, 0x01),
+            sdl2.SDL_SCANCODE_LCTRL: (7, 0x02),  # Left CTRL as SYM SHIFT
+            sdl2.SDL_SCANCODE_M: (7, 0x04),
+            sdl2.SDL_SCANCODE_N: (7, 0x08),
+            sdl2.SDL_SCANCODE_B: (7, 0x10),
+        }
+    
+    def press(self, scancode):
+        """Handle key press event - set the corresponding bit to 0"""
+        if scancode in self.key_map:
+            row, bit_mask = self.key_map[scancode]
+            # Clear the bit (0 = pressed in ZX Spectrum)
+            self.rows[row] &= ~bit_mask
+            
+            if self.debug_mode:
+                self.print_debug_info()
+    
+    def release(self, scancode):
+        """Handle key release event - set the corresponding bit to 1"""
+        if scancode in self.key_map:
+            row, bit_mask = self.key_map[scancode]
+            # Set the bit (1 = not pressed in ZX Spectrum)
+            self.rows[row] |= bit_mask
+            
+            if self.debug_mode:
+                self.print_debug_info()
+                
+    def print_debug_info(self):
+        """Print debug information about the current keyboard state"""
+        print("Keyboard State:")
+        for row in range(8):
+            bits = ""
+            for bit in range(5):
+                bit_value = (self.rows[row] >> bit) & 0x01
+                bits += str(bit_value)
+            print(f"Row {row}: {bits} (0x{self.rows[row]:02X})")
+        print("--------")
+    
+    def toggle_debug_mode(self):
+        """Toggle keyboard debug mode"""
+        self.debug_mode = not self.debug_mode
+        print(f"Keyboard debug mode: {'ON' if self.debug_mode else 'OFF'}")
+        
+        if self.debug_mode:
+            self.print_debug_info()
+    
+    def read_row(self, row):
+        """Read the state of a specific keyboard row"""
+        if 0 <= row < 8:
+            return self.rows[row]
+        return 0xFF  # Default: all keys up
+    
+    def read(self, addr):
+        """Implement the IODevice interface for keyboard reading
+        
+        On the ZX Spectrum, keyboard is read through the ULA:
+        - Low byte of address is typically 0xFE
+        - Bits of high byte select which rows to read:
+          - Bit 0 clear (0xFE) selects row 0
+          - Bit 1 clear (0xFD) selects row 1
+          - etc.
+        - If multiple bits are clear, then multiple rows are read
+          and the results are combined with bitwise AND
+        """
+        # We only care about the high byte for keyboard reading
+        high_byte = (addr >> 8) & 0xFF
+        
+        # Initialize result with all 1s (no keys pressed)
+        result = 0xFF
+        
+        # For each cleared bit in the high byte, read the corresponding row
+        for row in range(8):
+            # Check if this row's bit is cleared in the high byte
+            if not (high_byte & (1 << row)):
+                # If the bit is cleared, read this row and combine with result
+                result &= self.rows[row]
+        
+        return result
+
+
+# -----------------------------------------------------------------------------
 # ULA (Uncommitted Logic Array) class: Handles display generation and timing
 class ULA(IODevice):
     # Display generation constants
@@ -492,6 +666,7 @@ class ULA(IODevice):
         self.crt = crt
         self.cpu = cpu
         self.border_color = 0
+        self.keyboard = Keyboard()  # Create keyboard instance
         
         # Current position tracking for beam simulation
         self.line = 0           # Current scanline (0-311)
@@ -501,8 +676,22 @@ class ULA(IODevice):
     
     def read(self, addr):
         """Read from ULA ports (0xFE)"""
-        # In a real ZX Spectrum, reading from ULA port would return keyboard state
-        # For now, we'll just return 0xFF (no keys pressed)
+        # The ULA handles both keyboard input and other I/O
+        # For keyboard reads, the high byte of the address selects which rows to read
+        
+        # Check the low byte - ULA responds to port addresses with bit 0 clear
+        if (addr & 0x01) == 0:
+            # Get keyboard state
+            keyboard_state = self.keyboard.read(addr)
+            
+            # The lower 5 bits come from the keyboard (bits 0-4)
+            # The upper 3 bits (bits 5-7) are always 1
+            # So we need to clear bits 5-7 from keyboard_state and then set them to 1
+            result = (keyboard_state & 0x1F) | 0xE0
+            
+            return result
+        
+        # Default return for non-keyboard reads
         return 0xFF
     
     def write(self, addr, value):
@@ -642,13 +831,26 @@ class System:
                 if event.type == sdl2.SDL_QUIT:
                     quit = True
                 elif event.type == sdl2.SDL_KEYDOWN:
-                    # ESC key to quit
-                    if event.key.keysym.sym == sdl2.SDLK_ESCAPE:
+                    # Process key press
+                    scancode = event.key.keysym.scancode
+                    # Handle special keys
+                    if scancode == sdl2.SDL_SCANCODE_ESCAPE:
                         quit = True
-                    # Number keys 0-7 to change border color
-                    elif event.key.keysym.sym >= sdl2.SDLK_0 and event.key.keysym.sym <= sdl2.SDLK_7:
-                        border_color = event.key.keysym.sym - sdl2.SDLK_0
+                    # Handle border color changes with number keys
+                    elif scancode >= sdl2.SDL_SCANCODE_0 and scancode <= sdl2.SDL_SCANCODE_7:
+                        border_color = scancode - sdl2.SDL_SCANCODE_0
                         self.ula.set_border_color(border_color)
+                    # Toggle keyboard debug mode with F1
+                    elif scancode == sdl2.SDL_SCANCODE_F1:
+                        self.ula.keyboard.toggle_debug_mode()
+                    
+                    # Pass key press to the keyboard handler
+                    self.ula.keyboard.press(scancode)
+                    
+                elif event.type == sdl2.SDL_KEYUP:
+                    # Pass key release to the keyboard handler
+                    scancode = event.key.keysym.scancode
+                    self.ula.keyboard.release(scancode)
             
             # Process a chunk of emulation
             target_t_state = self.current_t_state + self.CHUNK_SIZE
