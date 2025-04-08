@@ -390,17 +390,17 @@ class CPU:
         
     def transact(self):
         """Handle memory and IO transactions based on pin state"""
-        if self.z80.is_mreq():  # Memory request
+        if (self.pins & Z80_MREQ):  # Memory request
             addr = self.z80.addr
-            if self.z80.is_rd():  # Memory read
+            if (self.pins & Z80_RD):  # Memory read
                 data = self.memory.read(addr)
                 self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
-            elif self.z80.is_wr():  # Memory write
+            elif (self.pins & Z80_WR):  # Memory write
                 data = self.z80.data
                 self.memory.write(addr, data)
-        elif self.z80.is_iorq():  # IO request
+        elif (self.pins & Z80_IORQ):  # IO request
             addr = self.z80.addr
-            if self.z80.is_m1():  # Interrupt acknowledge
+            if (self.pins & Z80_M1):  # Interrupt acknowledge
                 print(f"CPU: Interrupt acknowledged at T-state cycle")
                 print(f"CPU State during INT ACK: {self.get_state_summary()}")
                 print(f"Pin state during INT ACK: 0x{self.pins:016X}")
@@ -409,13 +409,13 @@ class CPU:
                 # Set a flag to check state after a few cycles
                 self.check_state_after_interrupt = 100  # Check after 100 cycles
             else:
-                if self.z80.is_rd():  # IO read
+                if (self.pins & Z80_RD):  # IO read
                     if self.io_bus is not None:
                         data = self.io_bus.read(addr)
                     else:
                         data = 0xFF  # Default if no IO bus
                     self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
-                elif self.z80.is_wr():  # IO write
+                elif (self.pins & Z80_WR):  # IO write
                     data = self.z80.data
                     print(f"CPU: IO Write - Port: 0x{addr:04X}, Data: 0x{data:02X}, Pins: 0x{self.pins:016X}")
                     if self.io_bus is not None:
