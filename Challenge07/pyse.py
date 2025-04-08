@@ -393,6 +393,14 @@ class CPU:
         if (self.pins & Z80_MREQ):  # Memory request
             addr = self.z80.addr
             if (self.pins & Z80_RD):  # Memory read
+                # Add IM2 vector table read debugging
+                if self.z80.im == 2 and hasattr(self, 'in_interrupt_sequence'):
+                    # For IM2, we need to track reads during interrupt
+                    i_reg = self.z80.i
+                    vector_base = (i_reg << 8)
+                    if addr >= vector_base and addr <= vector_base + 1:
+                        print(f"IM2: Reading from vector table at 0x{addr:04X} = 0x{self.memory.read(addr):02X}")
+                    
                 data = self.memory.read(addr)
                 self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
             elif (self.pins & Z80_WR):  # Memory write
@@ -405,9 +413,26 @@ class CPU:
                 print(f"CPU State during INT ACK: {self.get_state_summary()}")
                 print(f"Pin state during INT ACK: 0x{self.pins:016X}")
                 print(f"INT ACK: M1={self.z80.is_m1()}, IORQ={self.z80.is_iorq()}, RD={self.z80.is_rd()}")
+                
+                # Add IM2 vector calculation debugging
+                if self.z80.im == 2:
+                    i_reg = self.z80.i
+                    data_bus_value = 0xFF  # Value we'll put on data bus
+                    vector_addr = (i_reg << 8) | data_bus_value
+                    print(f"IM2 Interrupt Ack: I={i_reg:02X}, Data Bus=0xFF, Vector Address=0x{vector_addr:04X}")
+                    
+                    # For debugging: Show what's at that memory location
+                    low_byte = self.memory.read(vector_addr)
+                    high_byte = self.memory.read(vector_addr + 1)
+                    handler_addr = (high_byte << 8) | low_byte
+                    print(f"IM2 Vector Table: Reading from 0x{vector_addr:04X}, points to 0x{handler_addr:04X}")
+                    
+                    # Flag to track this interrupt sequence
+                    self.in_interrupt_sequence = True
+                
                 self.pins = Z80_SET_DATA(int(self.pins), 0xFF)
                 # Set a flag to check state after a few cycles
-                self.check_state_after_interrupt = 100  # Check after 100 cycles
+                self.check_state_after_interrupt = 20  # Check after fewer cycles
             else:
                 if (self.pins & Z80_RD):  # IO read
                     if self.io_bus is not None:
@@ -784,6 +809,11 @@ class ULA(IODevice):
         # Track PC changes to see execution flow
         if hasattr(self, 'last_pc'):
             if self.last_pc != self.cpu.z80.pc:
+                # Track the actual jump destination after interrupt
+                if hasattr(self.cpu, 'in_interrupt_sequence') and self.cpu.in_interrupt_sequence:
+                    print(f"IM2: CPU jumped to 0x{self.cpu.z80.pc:04X} after interrupt")
+                    delattr(self.cpu, 'in_interrupt_sequence')  # Clear the flag
+                    
                 # Define known loop addresses
                 loop_addresses = {0x010A, 0x010B, 0x010C}
                 
