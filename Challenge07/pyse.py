@@ -424,7 +424,7 @@ class CPU:
                         debug_print(f"IM2: Reading from vector table at 0x{addr:04X} = 0x{self.memory.read(addr):02X}")
                     
                 data = self.memory.read(addr)
-                self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
+                self.pins = Z80_SET_DATA((self.pins), int(data & 0xFF))
             elif (self.pins & Z80_WR):  # Memory write
                 data = self.z80.data
                 self.memory.write(addr, data)
@@ -452,7 +452,7 @@ class CPU:
                     # Flag to track this interrupt sequence
                     self.in_interrupt_sequence = True
                 
-                self.pins = Z80_SET_DATA(int(self.pins), 0xFF)
+                self.pins = Z80_SET_DATA((self.pins), 0xFF)
                 # Set a flag to check state after a few cycles
                 self.check_state_after_interrupt = 20  # Check after fewer cycles
             else:
@@ -461,7 +461,7 @@ class CPU:
                         data = self.io_bus.read(addr)
                     else:
                         data = 0xFF  # Default if no IO bus
-                    self.pins = Z80_SET_DATA(int(self.pins), int(data & 0xFF))
+                    self.pins = Z80_SET_DATA((self.pins), int(data & 0xFF))
                 elif (self.pins & Z80_WR):  # IO write
                     data = self.z80.data
                     debug_print(f"CPU: IO Write - Port: 0x{addr:04X}, Data: 0x{data:02X}, Pins: 0x{self.pins:016X}")
