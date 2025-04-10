@@ -298,25 +298,6 @@ class Memory:
             data = f.read(size)
             self.ram[addr:addr+size] = np.frombuffer(data, dtype=np.uint8)
             
-    def calculate_display_address(self, line, col):
-        """Calculate the memory address for a display byte using Spectrum's screen layout"""
-        # Start of screen memory
-        addr = 0x4000
-        
-        # Add Y portion
-        addr |= ((line & 0xC0) << 5)  # Which third of the screen (0-2)
-        addr |= ((line & 0x07) << 8)  # Which character cell row (0-7)
-        addr |= ((line & 0x38) << 2)  # Remaining bits (which row of character cells)
-        
-        # Add X portion
-        addr |= col & 0b00011111      # 5 bits of X (0-31)
-        
-        return addr
-    
-    def calculate_attr_address(self, line, col):
-        """Calculate the memory address for an attribute byte"""
-        return 0x5800 + ((line >> 3) * 32) + col
-
 
 # -----------------------------------------------------------------------------
 # IODevice: Abstract base class for IO devices
