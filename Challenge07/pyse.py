@@ -28,11 +28,6 @@ os.chdir(os.path.dirname(__file__))
 # Global debug flag
 DEBUG_ENABLED = False
 
-def debug_print(*args, **kwargs):
-    """Print function that respects the global debug flag"""
-    if DEBUG_ENABLED:
-        print("DEBUG_ENABLED: ", DEBUG_ENABLED)
-        print(*args, **kwargs)
 
 # -----------------------------------------------------------------------------
 # Timing constants (all in T-states)
@@ -298,10 +293,10 @@ class Memory:
             # TODO: See if we should reenable this memory protection
             pass  # Ignore writes to ROM
         # Track writes to screen memory (0x4000-0x5AFF)
-        if 0x4000 <= address <= 0x5AFF:
+        if DEBUG_ENABLED and 0x4000 <= address <= 0x5AFF:
             # Print only a small number of screen writes to avoid overwhelming output
             if (address & 0xFF) == 0:
-                debug_print(f"Screen write: 0x{address:04X} = 0x{value:02X}")
+                print(f"Screen write: 0x{address:04X} = 0x{value:02X}")
                 
         self.ram[address] = value
     
@@ -399,15 +394,13 @@ class CPU:
         
     def tick(self):
         """Process one CPU cycle"""
-        # print(f"pyse::CPU::tick 1: pins = {self.pins} (0x{self.pins:016X})")
         self.pins = self.z80.tick(self.pins)
-        # print(f"pyse::CPU::tick 2: pins = {self.pins} (0x{self.pins:016X})")
         
         # Monitor state after interrupt (with countdown to avoid too much output)
-        if hasattr(self, 'check_state_after_interrupt'):
+        if DEBUG_ENABLED and hasattr(self, 'check_state_after_interrupt'):
             self.check_state_after_interrupt -= 1
             if self.check_state_after_interrupt == 0:
-                debug_print(f"CPU State after interrupt handling: {self.get_state_summary()}")
+                print(f"CPU State after interrupt handling: {self.get_state_summary()}")
                 delattr(self, 'check_state_after_interrupt')
         
     def transact(self):
@@ -416,12 +409,12 @@ class CPU:
             addr = self.z80.addr
             if (self.pins & Z80_RD):  # Memory read
                 # Add IM2 vector table read debugging
-                if self.z80.im == 2 and hasattr(self, 'in_interrupt_sequence'):
+                if DEBUG_ENABLED and self.z80.im == 2 and hasattr(self, 'in_interrupt_sequence'):
                     # For IM2, we need to track reads during interrupt
                     i_reg = self.z80.i
                     vector_base = (i_reg << 8)
                     if addr >= vector_base and addr <= vector_base + 1:
-                        debug_print(f"IM2: Reading from vector table at 0x{addr:04X} = 0x{self.memory.read(addr):02X}")
+                        print(f"IM2: Reading from vector table at 0x{addr:04X} = 0x{self.memory.read(addr):02X}")
                     
                 data = self.memory.read(addr)
                 self.pins = Z80_SET_DATA((self.pins), int(data & 0xFF))
@@ -431,30 +424,32 @@ class CPU:
         elif (self.pins & Z80_IORQ):  # IO request
             addr = self.z80.addr
             if (self.pins & Z80_M1):  # Interrupt acknowledge
-                debug_print(f"CPU: Interrupt acknowledged at T-state cycle")
-                debug_print(f"CPU State during INT ACK: {self.get_state_summary()}")
-                debug_print(f"Pin state during INT ACK: 0x{self.pins:016X}")
-                debug_print(f"INT ACK: M1={self.z80.is_m1()}, IORQ={self.z80.is_iorq()}, RD={self.z80.is_rd()}")
-                
-                # Add IM2 vector calculation debugging
-                if self.z80.im == 2:
-                    i_reg = self.z80.i
-                    data_bus_value = 0xFF  # Value we'll put on data bus
-                    vector_addr = (i_reg << 8) | data_bus_value
-                    debug_print(f"IM2 Interrupt Ack: I={i_reg:02X}, Data Bus=0xFF, Vector Address=0x{vector_addr:04X}")
+                if DEBUG_ENABLED:
+                    print(f"CPU: Interrupt acknowledged at T-state cycle")
+                    print(f"CPU State during INT ACK: {self.get_state_summary()}")
+                    print(f"Pin state during INT ACK: 0x{self.pins:016X}")
+                    print(f"INT ACK: M1={self.z80.is_m1()}, IORQ={self.z80.is_iorq()}, RD={self.z80.is_rd()}")
                     
-                    # For debugging: Show what's at that memory location
-                    low_byte = self.memory.read(vector_addr)
-                    high_byte = self.memory.read(vector_addr + 1)
-                    handler_addr = (high_byte << 8) | low_byte
-                    debug_print(f"IM2 Vector Table: Reading from 0x{vector_addr:04X}, points to 0x{handler_addr:04X}")
-                    
-                    # Flag to track this interrupt sequence
-                    self.in_interrupt_sequence = True
+                    # Add IM2 vector calculation debugging
+                    if self.z80.im == 2:
+                        i_reg = self.z80.i
+                        data_bus_value = 0xFF  # Value we'll put on data bus
+                        vector_addr = (i_reg << 8) | data_bus_value
+                        print(f"IM2 Interrupt Ack: I={i_reg:02X}, Data Bus=0xFF, Vector Address=0x{vector_addr:04X}")
+                        
+                        # For debugging: Show what's at that memory location
+                        low_byte = self.memory.read(vector_addr)
+                        high_byte = self.memory.read(vector_addr + 1)
+                        handler_addr = (high_byte << 8) | low_byte
+                        print(f"IM2 Vector Table: Reading from 0x{vector_addr:04X}, points to 0x{handler_addr:04X}")
+                        
+                        # Flag to track this interrupt sequence
+                        self.in_interrupt_sequence = True
                 
                 self.pins = Z80_SET_DATA((self.pins), 0xFF)
                 # Set a flag to check state after a few cycles
-                self.check_state_after_interrupt = 20  # Check after fewer cycles
+                if DEBUG_ENABLED:
+                    self.check_state_after_interrupt = 20  # Check after fewer cycles
             else:
                 if (self.pins & Z80_RD):  # IO read
                     if self.io_bus is not None:
@@ -464,27 +459,33 @@ class CPU:
                     self.pins = Z80_SET_DATA((self.pins), int(data & 0xFF))
                 elif (self.pins & Z80_WR):  # IO write
                     data = self.z80.data
-                    debug_print(f"CPU: IO Write - Port: 0x{addr:04X}, Data: 0x{data:02X}, Pins: 0x{self.pins:016X}")
+                    if DEBUG_ENABLED:
+                        print(f"CPU: IO Write - Port: 0x{addr:04X}, Data: 0x{data:02X}, Pins: 0x{self.pins:016X}")
                     if self.io_bus is not None:
                         self.io_bus.write(addr, data)
-                        debug_print(f"CPU: IO Write forwarded to IO bus")
+                        if DEBUG_ENABLED:
+                            print(f"CPU: IO Write forwarded to IO bus")
     
     def interrupt(self, status=True):
         """Set or clear the interrupt pin"""
         if status:
-            debug_print(f"CPU: Setting interrupt pin (INT=1)")
-            debug_print(f"CPU State: {self.get_state_summary()}")
-            debug_print(f"Pin state before interrupt: 0x{self.pins:016X}")
-            debug_print(f"IFF1={self.z80.iff1}, IFF2={self.z80.iff2}, IM={self.z80.im}")
+            if DEBUG_ENABLED:
+                print(f"CPU: Setting interrupt pin (INT=1)")
+                print(f"CPU State: {self.get_state_summary()}")
+                print(f"Pin state before interrupt: 0x{self.pins:016X}")
+                print(f"IFF1={self.z80.iff1}, IFF2={self.z80.iff2}, IM={self.z80.im}")
             self.pins |= Z80_INT  # Set interrupt pin
-            debug_print(f"Pin state after setting INT: 0x{self.pins:016X}")
+            if DEBUG_ENABLED:
+                print(f"Pin state after setting INT: 0x{self.pins:016X}")
         else:
-            debug_print(f"CPU: Clearing interrupt pin (INT=0)")
-            debug_print(f"Pin state before clearing: 0x{self.pins:016X}")
+            if DEBUG_ENABLED:
+                print(f"CPU: Clearing interrupt pin (INT=0)")
+                print(f"Pin state before clearing: 0x{self.pins:016X}")
             self.pins &= ~Z80_INT  # Clear interrupt pin
-            debug_print(f"Pin state after clearing INT: 0x{self.pins:016X}")
-            debug_print(f"IFF1={self.z80.iff1}, IFF2={self.z80.iff2}, IM={self.z80.im}")
-            
+            if DEBUG_ENABLED:
+                print(f"Pin state after clearing INT: 0x{self.pins:016X}")
+                print(f"IFF1={self.z80.iff1}, IFF2={self.z80.iff2}, IM={self.z80.im}")
+    
     def set_pc(self, addr):
         """Set the program counter to a specific address"""
         self.pins = self.z80.prefetch(addr)
@@ -639,7 +640,7 @@ class Keyboard(IODevice):
             # Clear the bit (0 = pressed in ZX Spectrum)
             self.rows[row] &= ~bit_mask
             
-            if self.debug_mode:
+            if DEBUG_ENABLED and self.debug_mode:
                 self.print_debug_info()
     
     def release(self, scancode):
@@ -649,27 +650,28 @@ class Keyboard(IODevice):
             # Set the bit (1 = not pressed in ZX Spectrum)
             self.rows[row] |= bit_mask
             
-            if self.debug_mode:
+            if DEBUG_ENABLED and self.debug_mode:
                 self.print_debug_info()
                 
     def print_debug_info(self):
         """Print debug information about the current keyboard state"""
-        debug_print("Keyboard State:")
+        print("Keyboard State:")
         for row in range(8):
             bits = ""
             for bit in range(5):
                 bit_value = (self.rows[row] >> bit) & 0x01
                 bits += str(bit_value)
-            debug_print(f"Row {row}: {bits} (0x{self.rows[row]:02X})")
-        debug_print("--------")
+            print(f"Row {row}: {bits} (0x{self.rows[row]:02X})")
+        print("--------")
     
     def toggle_debug_mode(self):
         """Toggle keyboard debug mode"""
         self.debug_mode = not self.debug_mode
-        debug_print(f"Keyboard debug mode: {'ON' if self.debug_mode else 'OFF'}")
-        
-        if self.debug_mode:
-            self.print_debug_info()
+        if DEBUG_ENABLED:
+            print(f"Keyboard debug mode: {'ON' if self.debug_mode else 'OFF'}")
+            
+            if self.debug_mode:
+                self.print_debug_info()
     
     def read_row(self, row):
         """Read the state of a specific keyboard row"""
@@ -764,10 +766,55 @@ class ULA(IODevice):
         self.cpu.tick()
         
         # Check for interrupt-related state immediately after CPU tick
-        if self.cpu.pins & Z80_INT:
-            if self.cpu.z80.pc == 0x38 or (self.cpu.z80.is_m1() and self.cpu.z80.is_iorq()):
-                debug_print(f"ULA: Detected interrupt activity after CPU tick - PC=0x{self.cpu.z80.pc:04X}, M1={self.cpu.z80.is_m1()}, IORQ={self.cpu.z80.is_iorq()}, INT={bool(self.cpu.pins & Z80_INT)}")
-                debug_print(f"ULA: CPU flags - IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}, pins=0x{self.cpu.pins:016X}")
+        if DEBUG_ENABLED:
+            # Debug code for interrupt and CPU state tracking
+            if self.cpu.z80.is_m1() and self.cpu.z80.is_iorq():
+                print(f"INT ACKNOWLEDGE: PC={self.cpu.z80.pc:04X}, IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}")
+            elif self.cpu.z80.pc == 0x38:
+                print(f"INTERRUPT HANDLER: PC=0x38, AF={self.cpu.z80.af:04X}, pins=0x{self.cpu.pins:016X}")
+            
+            # int handler
+            if self.cpu.z80.pc >= 0x38 and self.cpu.z80.pc <= 0x44:
+                print(f"INT HANDLER STEP: PC=0x{self.cpu.z80.pc:04X}, A={self.cpu.z80.af>>8:02X}, pins=0x{self.cpu.pins:016X}")
+                
+                # Specifically trace the RET instruction
+                if self.cpu.z80.pc == 0x44:
+                    print(f"RETURN FROM INTERRUPT: PC=0x44, AF={self.cpu.z80.af:04X}, IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}")
+                # Specifically trace the EI instruction
+                elif self.cpu.z80.pc == 0x43:
+                    print(f"ENABLE INTERRUPTS (EI): PC=0x43, IFF1 before={self.cpu.z80.iff1}, IFF2 before={self.cpu.z80.iff2}")
+                    # Note: The IFF flags will be updated AFTER this instruction executes
+            
+            # Track if we're returning to main program from interrupt handler
+            if hasattr(self, 'last_pc') and self.last_pc == 0x44 and self.cpu.z80.pc != 0x44:
+                print(f"INT HANDLER RETURNED TO: PC=0x{self.cpu.z80.pc:04X}, AF={self.cpu.z80.af:04X}, pins=0x{self.cpu.pins:016X}")
+                print(f"IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}, IM={self.cpu.z80.im}")
+            
+            # Track PC changes to see execution flow
+            if hasattr(self, 'last_pc'):
+                if self.last_pc != self.cpu.z80.pc:
+                    # Track the actual jump destination after interrupt
+                    if hasattr(self.cpu, 'in_interrupt_sequence') and self.cpu.in_interrupt_sequence:
+                        print(f"IM2: CPU jumped to 0x{self.cpu.z80.pc:04X} after interrupt")
+                        delattr(self.cpu, 'in_interrupt_sequence')  # Clear the flag
+                        
+                    # Define known loop addresses
+                    loop_addresses = {0x010A, 0x010B, 0x010C}
+                    
+                    # Check if we're in the main loop
+                    if self.cpu.z80.pc in loop_addresses:
+                        # Only report entering the loop once
+                        if not hasattr(self, 'in_main_loop') or not self.in_main_loop:
+                            print(f"PC is in main loop between 0x010A and 0x010C")
+                            self.in_main_loop = True
+                    else:
+                        # Not in the main loop, print PC change
+                        # print(f"PC changed: 0x{self.last_pc:04X} -> 0x{self.cpu.z80.pc:04X}")
+                        self.in_main_loop = False
+        
+        # Always track last PC for debug mode, but without conditional overhead
+        # This keeps behavior consistent between debug and non-debug modes
+        self.last_pc = self.cpu.z80.pc
         
         # Check if we're in the visible (non-blanking) area
         visible = (self.line >= CRT.TOP_BLANKING and 
@@ -806,65 +853,21 @@ class ULA(IODevice):
         
         self.cpu.transact()
         
-        if self.cpu.z80.is_m1() and self.cpu.z80.is_iorq():
-            debug_print(f"INT ACKNOWLEDGE: PC={self.cpu.z80.pc:04X}, IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}")
-        elif self.cpu.z80.pc == 0x38:
-            debug_print(f"INTERRUPT HANDLER: PC=0x38, AF={self.cpu.z80.af:04X}, pins=0x{self.cpu.pins:016X}")
-        
-        # int handler
-        if self.cpu.z80.pc >= 0x38 and self.cpu.z80.pc <= 0x44:
-            debug_print(f"INT HANDLER STEP: PC=0x{self.cpu.z80.pc:04X}, A={self.cpu.z80.af>>8:02X}, pins=0x{self.cpu.pins:016X}")
-            
-            # Specifically trace the RET instruction
-            if self.cpu.z80.pc == 0x44:
-                debug_print(f"RETURN FROM INTERRUPT: PC=0x44, AF={self.cpu.z80.af:04X}, IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}")
-            # Specifically trace the EI instruction
-            elif self.cpu.z80.pc == 0x43:
-                debug_print(f"ENABLE INTERRUPTS (EI): PC=0x43, IFF1 before={self.cpu.z80.iff1}, IFF2 before={self.cpu.z80.iff2}")
-                # Note: The IFF flags will be updated AFTER this instruction executes
-        
-        # Track if we're returning to main program from interrupt handler
-        if hasattr(self, 'last_pc') and self.last_pc == 0x44 and self.cpu.z80.pc != 0x44:
-            debug_print(f"INT HANDLER RETURNED TO: PC=0x{self.cpu.z80.pc:04X}, AF={self.cpu.z80.af:04X}, pins=0x{self.cpu.pins:016X}")
-            debug_print(f"IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}, IM={self.cpu.z80.im}")
-        
-        # Track PC changes to see execution flow
-        if hasattr(self, 'last_pc'):
-            if self.last_pc != self.cpu.z80.pc:
-                # Track the actual jump destination after interrupt
-                if hasattr(self.cpu, 'in_interrupt_sequence') and self.cpu.in_interrupt_sequence:
-                    debug_print(f"IM2: CPU jumped to 0x{self.cpu.z80.pc:04X} after interrupt")
-                    delattr(self.cpu, 'in_interrupt_sequence')  # Clear the flag
-                    
-                # Define known loop addresses
-                loop_addresses = {0x010A, 0x010B, 0x010C}
-                
-                # Check if we're in the main loop
-                if self.cpu.z80.pc in loop_addresses:
-                    # Only report entering the loop once
-                    if not hasattr(self, 'in_main_loop') or not self.in_main_loop:
-                        debug_print(f"PC is in main loop between 0x010A and 0x010C")
-                        self.in_main_loop = True
-                else:
-                    # Not in the main loop, print PC change
-                    debug_print(f"PC changed: 0x{self.last_pc:04X} -> 0x{self.cpu.z80.pc:04X}")
-                    self.in_main_loop = False
-                    
-        self.last_pc = self.cpu.z80.pc
-        
         # Update position counters
         self.line_cycle += 1
         
         # Generate interrupts at the start of the frame
         if self.line == 0 and self.line_cycle == self.BORDER_T_STATES:
             # Generate CPU interrupt
-            debug_print(f"ULA: Generating interrupt at line={self.line}, cycle={self.line_cycle}")
-            debug_print(f"ULA: CPU state before interrupt: {self.cpu.get_state_summary()}")
+            if DEBUG_ENABLED:
+                print(f"ULA: Generating interrupt at line={self.line}, cycle={self.line_cycle}")
+                print(f"ULA: CPU state before interrupt: {self.cpu.get_state_summary()}")
             self.cpu.interrupt(True)
         elif self.line == 0 and self.line_cycle == self.BORDER_T_STATES + self.INTERRUPT_DURATION:
             # End of interrupt
-            debug_print(f"ULA: Ending interrupt at line={self.line}, cycle={self.line_cycle}")
-            debug_print(f"ULA: CPU state before ending interrupt: {self.cpu.get_state_summary()}")
+            if DEBUG_ENABLED:
+                print(f"ULA: Ending interrupt at line={self.line}, cycle={self.line_cycle}")
+                print(f"ULA: CPU state before ending interrupt: {self.cpu.get_state_summary()}")
             self.cpu.interrupt(False)
             
         # Check if we've reached the end of a line
@@ -1002,12 +1005,12 @@ class System:
     def load_scr(self, filename):
         """Load a .scr screen file"""
         self.memory.load_from_file(filename, 0x4000, 6912)
-        debug_print(f"Screen file loaded: {filename}")
+        print(f"Screen file loaded: {filename}")
             
     def load_rom(self, filename):
         """Load a ROM file into memory at address 0x0000"""
         self.memory.load_from_file(filename, 0x0000, 16384)  # 16KB ROM
-        debug_print(f"ROM loaded: {filename}")
+        print(f"ROM loaded: {filename}")
             
     def load_sna(self, filename):
         """Load a .sna snapshot file
@@ -1099,7 +1102,7 @@ class System:
             
             # Load into RAM
             self.memory.ram[0x4000:0x10000] = np.frombuffer(ram_data, dtype=np.uint8)
-        debug_print(f"SNA file loaded: {filename}")
+        print(f"SNA file loaded: {filename}")
 
 
 # -----------------------------------------------------------------------------
