@@ -8,3 +8,4 @@
 
 venv
 pypyvenv
+__pycache__
