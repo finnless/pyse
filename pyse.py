@@ -25,10 +25,6 @@ from _z80_bindings import Z80_INT, Z80_M1, Z80_MREQ, Z80_IORQ, Z80_RD, Z80_WR, Z
 # Change back to original directory
 os.chdir(os.path.dirname(__file__))
 
-# Global debug flag
-DEBUG_ENABLED = False
-
-
 # -----------------------------------------------------------------------------
 # Timing constants (all in T-states)
 T_STATES_PER_LINE = 224
@@ -274,11 +270,6 @@ class Memory:
             # return  # Ignore writes to ROM
             # TODO: See if we should reenable this memory protection
             pass  # Ignore writes to ROM
-        # Track writes to screen memory (0x4000-0x5AFF)
-        # if DEBUG_ENABLED and 0x4000 <= address <= 0x5AFF:
-        #     # Print only a small number of screen writes to avoid overwhelming output
-        #     if (address & 0xFF) == 0:
-        #         print(f"Screen write: 0x{address:04X} = 0x{value:02X}")
                 
         self.ram[address] = value
     
@@ -297,7 +288,7 @@ class Memory:
             # Read data into memory
             data = f.read(size)
             self.ram[addr:addr+size] = np.frombuffer(data, dtype=np.uint8)
-            
+
 
 # -----------------------------------------------------------------------------
 # IODevice: Abstract base class for IO devices
@@ -359,26 +350,11 @@ class CPU:
         """Process one CPU cycle"""
         self.pins = self.z80.tick(self.pins)
         
-        # # Monitor state after interrupt (with countdown to avoid too much output)
-        # if DEBUG_ENABLED and hasattr(self, 'check_state_after_interrupt'):
-        #     self.check_state_after_interrupt -= 1
-        #     if self.check_state_after_interrupt == 0:
-        #         print(f"CPU State after interrupt handling: {self.get_state_summary()}")
-        #         delattr(self, 'check_state_after_interrupt')
-        
     def transact(self):
         """Handle memory and IO transactions based on pin state"""
         if (self.pins & Z80_MREQ):  # Memory request
             addr = self.z80.addr
             if (self.pins & Z80_RD):  # Memory read
-                # Add IM2 vector table read debugging
-                # if DEBUG_ENABLED and self.z80.im == 2 and hasattr(self, 'in_interrupt_sequence'):
-                #     # For IM2, we need to track reads during interrupt
-                #     i_reg = self.z80.i
-                #     vector_base = (i_reg << 8)
-                #     if addr >= vector_base and addr <= vector_base + 1:
-                #         print(f"IM2: Reading from vector table at 0x{addr:04X} = 0x{self.memory.read(addr):02X}")
-                    
                 data = self.memory.read(addr)
                 self.pins = Z80_SET_DATA((self.pins), int(data & 0xFF))
             elif (self.pins & Z80_WR):  # Memory write
@@ -387,32 +363,7 @@ class CPU:
         elif (self.pins & Z80_IORQ):  # IO request
             addr = self.z80.addr
             if (self.pins & Z80_M1):  # Interrupt acknowledge
-                # if DEBUG_ENABLED:
-                #     print(f"CPU: Interrupt acknowledged at T-state cycle")
-                #     print(f"CPU State during INT ACK: {self.get_state_summary()}")
-                #     print(f"Pin state during INT ACK: 0x{self.pins:016X}")
-                #     print(f"INT ACK: M1={self.z80.is_m1()}, IORQ={self.z80.is_iorq()}, RD={self.z80.is_rd()}")
-                    
-                #     # Add IM2 vector calculation debugging
-                #     if self.z80.im == 2:
-                #         i_reg = self.z80.i
-                #         data_bus_value = 0xFF  # Value we'll put on data bus
-                #         vector_addr = (i_reg << 8) | data_bus_value
-                #         print(f"IM2 Interrupt Ack: I={i_reg:02X}, Data Bus=0xFF, Vector Address=0x{vector_addr:04X}")
-                        
-                #         # For debugging: Show what's at that memory location
-                #         low_byte = self.memory.read(vector_addr)
-                #         high_byte = self.memory.read(vector_addr + 1)
-                #         handler_addr = (high_byte << 8) | low_byte
-                #         print(f"IM2 Vector Table: Reading from 0x{vector_addr:04X}, points to 0x{handler_addr:04X}")
-                        
-                #         # Flag to track this interrupt sequence
-                #         self.in_interrupt_sequence = True
-                
                 self.pins = Z80_SET_DATA((self.pins), 0xFF)
-                # Set a flag to check state after a few cycles
-                # if DEBUG_ENABLED:
-                #     self.check_state_after_interrupt = 20  # Check after fewer cycles
             else:
                 if (self.pins & Z80_RD):  # IO read
                     if self.io_bus is not None:
@@ -422,32 +373,15 @@ class CPU:
                     self.pins = Z80_SET_DATA((self.pins), int(data & 0xFF))
                 elif (self.pins & Z80_WR):  # IO write
                     data = self.z80.data
-                    # if DEBUG_ENABLED:
-                    #     print(f"CPU: IO Write - Port: 0x{addr:04X}, Data: 0x{data:02X}, Pins: 0x{self.pins:016X}")
                     if self.io_bus is not None:
                         self.io_bus.write(addr, data)
-                        # if DEBUG_ENABLED:
-                        #     print(f"CPU: IO Write forwarded to IO bus")
     
     def interrupt(self, status=True):
         """Set or clear the interrupt pin"""
         if status:
-            # if DEBUG_ENABLED:
-            #     print(f"CPU: Setting interrupt pin (INT=1)")
-            #     print(f"CPU State: {self.get_state_summary()}")
-            #     print(f"Pin state before interrupt: 0x{self.pins:016X}")
-            #     print(f"IFF1={self.z80.iff1}, IFF2={self.z80.iff2}, IM={self.z80.im}")
             self.pins |= Z80_INT  # Set interrupt pin
-            # if DEBUG_ENABLED:
-            #     print(f"Pin state after setting INT: 0x{self.pins:016X}")
         else:
-            # if DEBUG_ENABLED:
-            #     print(f"CPU: Clearing interrupt pin (INT=0)")
-            #     print(f"Pin state before clearing: 0x{self.pins:016X}")
             self.pins &= ~Z80_INT  # Clear interrupt pin
-            # if DEBUG_ENABLED:
-            #     print(f"Pin state after clearing INT: 0x{self.pins:016X}")
-            #     print(f"IFF1={self.z80.iff1}, IFF2={self.z80.iff2}, IM={self.z80.im}")
     
     def set_pc(self, addr):
         """Set the program counter to a specific address"""
@@ -532,9 +466,6 @@ class Keyboard(IODevice):
         # In ZX Spectrum, 0=pressed, 1=not pressed, so initialize all to 0xFF (not pressed)
         self.rows = [0xFF] * 8
         
-        # Debug flag
-        self.debug_mode = False
-        
         # Define mapping from SDL scancodes to ZX Spectrum keyboard positions
         # Format: SDL_SCANCODE: (row, bit_mask)
         self.key_map = {
@@ -602,9 +533,6 @@ class Keyboard(IODevice):
             row, bit_mask = self.key_map[scancode]
             # Clear the bit (0 = pressed in ZX Spectrum)
             self.rows[row] &= ~bit_mask
-            
-            # if DEBUG_ENABLED and self.debug_mode:
-            #     self.print_debug_info()
     
     def release(self, scancode):
         """Handle key release event - set the corresponding bit to 1"""
@@ -612,29 +540,6 @@ class Keyboard(IODevice):
             row, bit_mask = self.key_map[scancode]
             # Set the bit (1 = not pressed in ZX Spectrum)
             self.rows[row] |= bit_mask
-            
-            # if DEBUG_ENABLED and self.debug_mode:
-            #     self.print_debug_info()
-                
-    # def print_debug_info(self):
-    #     """Print debug information about the current keyboard state"""
-    #     print("Keyboard State:")
-    #     for row in range(8):
-    #         bits = ""
-    #         for bit in range(5):
-    #             bit_value = (self.rows[row] >> bit) & 0x01
-    #             bits += str(bit_value)
-    #         print(f"Row {row}: {bits} (0x{self.rows[row]:02X})")
-    #     print("--------")
-    
-    # def toggle_debug_mode(self):
-    #     """Toggle keyboard debug mode"""
-    #     self.debug_mode = not self.debug_mode
-    #     if DEBUG_ENABLED:
-    #         print(f"Keyboard debug mode: {'ON' if self.debug_mode else 'OFF'}")
-            
-    #         if self.debug_mode:
-    #             self.print_debug_info()
     
     def read_row(self, row):
         """Read the state of a specific keyboard row"""
@@ -725,82 +630,14 @@ class ULA(IODevice):
     
     def tick(self):
         """Process one T-state of ULA operation"""
-        # # Initialize timings dict if it doesn't exist
-        # if not hasattr(self, 'tick_timings'):
-        #     self.tick_timings = {
-        #         'cpu_tick': 0.0,
-        #         'debug_checks': 0.0,
-        #         'screen_updates': 0.0,
-        #         'cpu_transact': 0.0,
-        #         'interrupt_handling': 0.0,
-        #         'line_position_updates': 0.0,
-        #         'total': 0.0,
-        #         'count': 0
-        #     }
-        #     self.timing_report_interval = 100000  # Report every 100k ticks
-        
-        # tick_start = time.time()
-        
         # First tick the CPU
-        # cpu_start = time.time()
         self.cpu.tick()
-        # self.tick_timings['cpu_tick'] += time.time() - cpu_start
-        
-        # Check for interrupt-related state immediately after CPU tick
-        # debug_start = time.time()
-        # if DEBUG_ENABLED:
-        #     # Debug code for interrupt and CPU state tracking
-        #     if self.cpu.z80.is_m1() and self.cpu.z80.is_iorq():
-        #         print(f"INT ACKNOWLEDGE: PC={self.cpu.z80.pc:04X}, IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}")
-        #     elif self.cpu.z80.pc == 0x38:
-        #         print(f"INTERRUPT HANDLER: PC=0x38, AF={self.cpu.z80.af:04X}, pins=0x{self.cpu.pins:016X}")
-            
-        #     # int handler
-        #     if self.cpu.z80.pc >= 0x38 and self.cpu.z80.pc <= 0x44:
-        #         print(f"INT HANDLER STEP: PC=0x{self.cpu.z80.pc:04X}, A={self.cpu.z80.af>>8:02X}, pins=0x{self.cpu.pins:016X}")
-                
-        #         # Specifically trace the RET instruction
-        #         if self.cpu.z80.pc == 0x44:
-        #             print(f"RETURN FROM INTERRUPT: PC=0x44, AF={self.cpu.z80.af:04X}, IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}")
-        #         # Specifically trace the EI instruction
-        #         elif self.cpu.z80.pc == 0x43:
-        #             print(f"ENABLE INTERRUPTS (EI): PC=0x43, IFF1 before={self.cpu.z80.iff1}, IFF2 before={self.cpu.z80.iff2}")
-        #             # Note: The IFF flags will be updated AFTER this instruction executes
-            
-        #     # Track if we're returning to main program from interrupt handler
-        #     if hasattr(self, 'last_pc') and self.last_pc == 0x44 and self.cpu.z80.pc != 0x44:
-        #         print(f"INT HANDLER RETURNED TO: PC=0x{self.cpu.z80.pc:04X}, AF={self.cpu.z80.af:04X}, pins=0x{self.cpu.pins:016X}")
-        #         print(f"IFF1={self.cpu.z80.iff1}, IFF2={self.cpu.z80.iff2}, IM={self.cpu.z80.im}")
-            
-        #     # Track PC changes to see execution flow
-        #     if hasattr(self, 'last_pc'):
-        #         if self.last_pc != self.cpu.z80.pc:
-        #             # Track the actual jump destination after interrupt
-        #             if hasattr(self.cpu, 'in_interrupt_sequence') and self.cpu.in_interrupt_sequence:
-        #                 print(f"IM2: CPU jumped to 0x{self.cpu.z80.pc:04X} after interrupt")
-        #                 delattr(self.cpu, 'in_interrupt_sequence')  # Clear the flag
-                        
-        #             # Define known loop addresses
-        #             loop_addresses = {0x010A, 0x010B, 0x010C}
-                    
-        #             # Check if we're in the main loop
-        #             if self.cpu.z80.pc in loop_addresses:
-        #                 # Only report entering the loop once
-        #                 if not hasattr(self, 'in_main_loop') or not self.in_main_loop:
-        #                     print(f"PC is in main loop between 0x010A and 0x010C")
-        #                     self.in_main_loop = True
-        #             else:
-        #                 # Not in the main loop, print PC change
-        #                 # print(f"PC changed: 0x{self.last_pc:04X} -> 0x{self.cpu.z80.pc:04X}")
-        #                 self.in_main_loop = False
-        # self.tick_timings['debug_checks'] += time.time() - debug_start
         
         # Always track last PC for debug mode, but without conditional overhead
         # This keeps behavior consistent between debug and non-debug modes
         self.last_pc = self.cpu.z80.pc
         
         # Check if we're in the visible (non-blanking) area
-        # screen_start = time.time()
         
         # Precalculate values used in conditionals
         visible = (self.line >= CRT.TOP_BLANKING and 
@@ -820,32 +657,20 @@ class ULA(IODevice):
                 self.SCREEN_START_LINE, self.SCREEN_HEIGHT, self.SCREEN_START_COLUMN, self.SCREEN_WIDTH_BYTES,
                 self.crt.odd_field, self.crt.flash_inverted, self.crt.rgba_color_table
             )
-        # self.tick_timings['screen_updates'] += time.time() - screen_start
         
-        # # Process memory and I/O transactions
-        # transact_start = time.time()
+        # Process memory and I/O transactions
         self.cpu.transact()
-        # self.tick_timings['cpu_transact'] += time.time() - transact_start
         
         # Update position counters
-        # line_start = time.time()
         self.line_cycle += 1
         
         # Generate interrupts at the start of the frame
-        # interrupt_start = time.time()
         if self.line == 0 and self.line_cycle == self.BORDER_T_STATES:
             # Generate CPU interrupt
-            # if DEBUG_ENABLED:
-            #     print(f"ULA: Generating interrupt at line={self.line}, cycle={self.line_cycle}")
-            #     print(f"ULA: CPU state before interrupt: {self.cpu.get_state_summary()}")
             self.cpu.interrupt(True)
         elif self.line == 0 and self.line_cycle == self.BORDER_T_STATES + self.INTERRUPT_DURATION:
             # End of interrupt
-            # if DEBUG_ENABLED:
-            #     print(f"ULA: Ending interrupt at line={self.line}, cycle={self.line_cycle}")
-            #     print(f"ULA: CPU state before ending interrupt: {self.cpu.get_state_summary()}")
             self.cpu.interrupt(False)
-        # self.tick_timings['interrupt_handling'] += time.time() - interrupt_start
             
         # Check if we've reached the end of a line
         if self.line_cycle >= T_STATES_PER_LINE:
@@ -864,32 +689,6 @@ class ULA(IODevice):
                 
                 # Toggle interlace field
                 self.crt.toggle_field()
-        # self.tick_timings['line_position_updates'] += time.time() - line_start
-        
-        # # Update total and count
-        # total_time = time.time() - tick_start
-        # self.tick_timings['total'] += total_time
-        # self.tick_timings['count'] += 1
-        
-        # # Periodically report timing statistics
-        # if self.tick_timings['count'] % self.timing_report_interval == 0:
-        #     total = self.tick_timings['total'] if self.tick_timings['total'] > 0 else 1
-        #     count = self.tick_timings['count']
-            
-        #     print("\nULA Tick Timing Statistics (average over last {0:,} ticks):".format(count))
-        #     for key, value in self.tick_timings.items():
-        #         if key != 'total' and key != 'count':
-        #             pct = (value / total) * 100
-        #             avg_us = (value / count) * 1_000_000  # Convert to microseconds
-        #             print(f"  {key}: {pct:.2f}% ({avg_us:.6f}µs per tick)")
-            
-        #     print(f"  Total time: {total:.6f}s ({(total/count)*1_000_000:.6f}µs per tick)")
-        #     print(f"  Ticks processed: {count:,}")
-            
-        #     # Reset timings for next interval
-        #     for key in self.tick_timings:
-        #         self.tick_timings[key] = 0.0
-        #     self.tick_timings['count'] = 0
     
     def set_border_color(self, color):
         """Set the border color (0-7)"""
@@ -907,10 +706,6 @@ class System:
     CHUNK_SIZE = 13 * 8 * 224  # Approximately 13 character rows
     
     def __init__(self, debug=False):
-        # Set global debug flag
-        global DEBUG_ENABLED
-        DEBUG_ENABLED = debug
-        
         # Initialize components
         self.crt = CRT()
         self.memory = Memory()
@@ -948,21 +743,8 @@ class System:
         start_time = time.time()
         next_refresh_t_state = self.current_t_state + T_STATES_PER_FRAME
         
-        # # Timing statistics
-        # timings = {
-        #     'event_processing': 0.0,
-        #     'emulation': 0.0,
-        #     'fps_calculation': 0.0,
-        #     'screen_refresh': 0.0,
-        #     'sleep': 0.0,
-        #     'total': 0.0
-        # }
-        
         while not quit:
-            # loop_start = time.time()
-            
             # Process SDL events
-            # event_start = time.time()
             while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
                 if event.type == sdl2.SDL_QUIT:
                     quit = True
@@ -976,9 +758,6 @@ class System:
                     elif scancode >= sdl2.SDL_SCANCODE_0 and scancode <= sdl2.SDL_SCANCODE_7:
                         border_color = scancode - sdl2.SDL_SCANCODE_0
                         self.ula.set_border_color(border_color)
-                    # Toggle keyboard debug mode with F1
-                    # elif scancode == sdl2.SDL_SCANCODE_F1:
-                    #     self.ula.keyboard.toggle_debug_mode()
                     
                     # Pass key press to the keyboard handler
                     self.ula.keyboard.press(scancode)
@@ -987,18 +766,14 @@ class System:
                     # Pass key release to the keyboard handler
                     scancode = event.key.keysym.scancode
                     self.ula.keyboard.release(scancode)
-            # timings['event_processing'] += time.time() - event_start
             
             # Process a chunk of emulation
-            # emulation_start = time.time()
             target_t_state = self.current_t_state + self.CHUNK_SIZE
             while self.current_t_state < target_t_state:
                 self.ula.tick()
                 self.current_t_state += 1
-            # timings['emulation'] += time.time() - emulation_start
             
             # FPS calculation
-            # fps_start = time.time()
             current_time = time.time()
             self.frame_count += 1
             
@@ -1009,35 +784,18 @@ class System:
                 self.crt.set_title_fps(self.fps)
                 self.frame_count = 0
                 self.last_time = current_time
-            # timings['fps_calculation'] += time.time() - fps_start
             
             # Check if we need to refresh the display
-            # refresh_start = time.time()
             if self.current_t_state >= next_refresh_t_state:
                 self.crt.refresh()
                 next_refresh_t_state += T_STATES_PER_FRAME
-            # timings['screen_refresh'] += time.time() - refresh_start
             
             # Sleep if we're ahead of real time
-            # sleep_start = time.time()
             target_time = start_time + ((self.current_t_state * 1_000_000) / CLOCK_RATE / 1_000_000)
             time_ahead = target_time - time.time()
             
             if time_ahead > 0.001:  # More than 1ms ahead
                 time.sleep(time_ahead - 0.001)  # Leave 1ms margin
-            # timings['sleep'] += time.time() - sleep_start
-            
-            # timings['total'] += time.time() - loop_start
-            
-            # # Print timing stats every 100 frames
-            # if self.frame_count % 100 == 0:
-            #     total = timings['total'] if timings['total'] > 0 else 1
-            #     print("\nTiming percentages:")
-            #     for key, value in timings.items():
-            #         if key != 'total':
-            #             pct = (value / total) * 100
-            #             print(f"  {key}: {pct:.2f}% ({value:.6f}s)")
-            #     print(f"  Total time: {total:.6f}s")
     
     def load_scr(self, filename):
         """Load a .scr screen file"""
@@ -1149,8 +907,6 @@ def main():
         print(f"SDL_Init Error: {sdl2.SDL_GetError().decode()}", file=sys.stderr)
         return 1
 
-    # Default debugging state
-    debug_enabled = False    
     # Parse command line arguments
     rom_loaded = False
     
@@ -1165,8 +921,8 @@ def main():
         else:
             i += 1
     
-    # Create system with proper debug setting
-    system = System(debug=debug_enabled)
+    # Create system
+    system = System()
     
     # Track if we need to load files
     rom_file = None
@@ -1224,27 +980,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-    # import cProfile
-    # import pstats
-    # from io import StringIO
-    
-    # # Create a profile object and run the main function
-    # profiler = cProfile.Profile()
-    # result = profiler.runcall(main)
-    
-    # # Create a string buffer and sort stats by cumulative time
-    # s = StringIO()
-    # ps = pstats.Stats(profiler, stream=s).sort_stats('cumtime')
-    
-    # # Print only the top 20 functions to the console
-    # ps.print_stats(20)
-    # print(s.getvalue())
-    
-    # # Write full stats to a file for later review
-    # with open('profiling_stats.txt', 'w') as f:
-    #     ps = pstats.Stats(profiler, stream=f).sort_stats('cumtime')
-    #     ps.print_stats()
-    
-    # print("\nFull profiling data saved to 'profiling_stats.txt'")
-    
-    # sys.exit(result)
