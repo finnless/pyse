@@ -1,9 +1,5 @@
-# Emulation and Retro Computing
+On my MacBook Pro M1 MAX
 
-Team workspace.
-
-* Use the directory corresponding to the challenge you're working on.
-* Use this workspace to hold anything your team is working on.
-   * Use to hold your original created work.
-   * Avoid checking in huge files of publicly available or program-generated datat (use links instead).
-
+python 3.12: 1.5 FPS
+pypy: 6 FPS
+numba: 50FPS (without SDL_Delay up to 200FPS)
