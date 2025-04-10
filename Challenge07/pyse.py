@@ -1128,39 +1128,54 @@ def main():
     # Create system with proper debug setting
     system = System(debug=debug_enabled)
     
-    # Handle remaining command line arguments for loading files
+    # Track if we need to load files
+    rom_file = None
+    sna_file = None
+    scr_files = []
+    
+    # Process command line arguments for loading files
     if len(args) > 0:
         for arg in args:
             if arg == "-h" or arg == "--help":
                 print(f"Usage: {sys.argv[0]} [options] [filename...]")
                 print("Options:")
                 print("  -h, --help           Display command information")
-                print("  -q, --quiet          Disable debugging output")
+                print("  -d, --debug          Enable debugging output")
                 print("Available file formats:")
                 print("  .scr                 Screen data (6912 bytes)")
                 print("  .rom                 System ROM (16384 bytes)")
                 print("  .sna                 Snapshot file (49179 bytes)")
                 print("Default ROM '48.rom' will be loaded if no ROM specified.")
                 return 0
-            elif arg.endswith(".scr"):
-                print(f"Loading screen file: {arg}")
-                system.load_scr(arg)
-                rom_loaded = True
             elif arg.endswith(".rom"):
-                print(f"Loading ROM file: {arg}")
-                system.load_rom(arg)
-                rom_loaded = True
+                print(f"Found ROM file: {arg}")
+                rom_file = arg
             elif arg.endswith(".sna"):
-                print(f"Loading SNA snapshot file: {arg}")
-                system.load_sna(arg)
-                rom_loaded = True
+                print(f"Found SNA snapshot file: {arg}")
+                sna_file = arg
+            elif arg.endswith(".scr"):
+                print(f"Found screen file: {arg}")
+                scr_files.append(arg)
             else:
                 print(f"Unknown file type: {arg}", file=sys.stderr)
     
-    # Load default ROM if no ROM was specified
-    if not rom_loaded:
+    # Load ROM first (either specified or default)
+    if rom_file:
+        print(f"Loading ROM file: {rom_file}")
+        system.load_rom(rom_file)
+    else:
         print("Loading default ROM: 48.rom")
         system.load_rom("48.rom")
+    
+    # Then load snapshot if available
+    if sna_file:
+        print(f"Loading SNA snapshot file: {sna_file}")
+        system.load_sna(sna_file)
+    
+    # Finally load any screen files
+    for scr_file in scr_files:
+        print(f"Loading screen file: {scr_file}")
+        system.load_scr(scr_file)
     
     system.run()
     
