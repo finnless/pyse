@@ -111,12 +111,6 @@ class CRT:
         if hasattr(self, 'window') and self.window:
             sdl2.SDL_DestroyWindow(self.window)
 
-    def update_pixels(self, line, column, display_byte, attr_byte):
-        """Update a group of 8 pixels based on display byte and attribute byte"""
-        update_pixels_jit(self.pixels, line, column, display_byte, attr_byte,
-                          self.TOP_BLANKING, self.VISIBLE_LINES, self.TOTAL_WIDTH, self.CRT_LINES,
-                          self.odd_field, self.flash_inverted, self.rgba_color_table)
-
     def refresh(self):
         """Update the screen with current pixel data"""
         # Convert numpy array to ctypes array for SDL
@@ -146,79 +140,59 @@ class CRT:
         self.odd_field = not self.odd_field
 
 
-# -----------------------------------------------------------------------------
-# Test pattern generator to visualize the display
-@jit(nopython=True)
-def generate_test_pattern(pixels, width, height, color_table):
-    """Generate a test pattern similar to ZX Spectrum's display"""
-    # Clear the screen first
-    for y in range(height):
-        for x in range(width):
-            pixels[y, x] = color_table[0]  # Black background
-    
-    # Draw a spectrum-like test pattern
-    # ZX Spectrum has 24 rows of 32 columns (8x8 character cells)
-    cell_width = 8
-    cell_height = 8
-    
-    for row in range(24):
-        for col in range(32):
-            if col < width // cell_width and row < height // cell_height:
-                # Choose colors based on position
-                ink_color = (col % 8)  # Cycle through all 8 colors
-                paper_color = (row % 8)  # Cycle through all 8 colors
-                
-                # Skip if ink and paper are the same to improve visibility
-                if ink_color == paper_color:
-                    ink_color = (ink_color + 4) % 8
-                
-                # Calculate cell position
-                cell_x = col * cell_width
-                cell_y = row * cell_height * 2  # Doubled for interlacing
-                
-                # Draw character cell (a block with a letter-like pattern)
-                for cy in range(cell_height * 2):  # Double height for interlacing
-                    for cx in range(cell_width):
-                        y = cell_y + cy
-                        x = cell_x + cx
-                        
-                        # Bounds check
-                        if y < height and x < width:
-                            # Create a simple pattern: horizontal stripes in some cells,
-                            # vertical in others, and checkerboard in the rest
-                            pattern_type = (row + col) % 3
-                            
-                            if pattern_type == 0:
-                                # Horizontal stripes
-                                is_ink = (cy // 2) % 2 == 0
-                            elif pattern_type == 1:
-                                # Vertical stripes
-                                is_ink = cx % 2 == 0
-                            else:
-                                # Checkerboard
-                                is_ink = ((cx % 2) ^ ((cy // 2) % 2)) == 0
-                                
-                            pixels[y, x] = color_table[ink_color if is_ink else paper_color]
-
-
-# JIT-compiled pixel update function for better performance
-@jit(nopython=True)
-def update_pixels_jit(pixels, line, column, display_byte, attr_byte, 
-                      top_blanking, visible_lines, total_width, crt_lines,
-                      odd_field, flash_inverted, rgba_color_table):
-    """Update a group of 8 pixels based on display byte and attribute byte with Numba acceleration"""
+# JIT-compiled single-pass screen update function
+@jit(nopython=True, cache=True)
+def screen_update_full_jit(
+    pixels, ram, line, column, border_color,
+    top_blanking, visible_lines, total_width, crt_lines,
+    screen_start_line, screen_height, screen_start_column, screen_width_bytes,
+    odd_field, flash_inverted, rgba_color_table
+):
+    """Handle the entire screen update process in a single JIT-compiled function"""
     # Skip if in blanking interval
     if line < top_blanking or line >= (top_blanking + visible_lines):
         return
         
+    # Check if we're in the visible area
+    in_screen_line = (line >= screen_start_line and 
+                     line < (screen_start_line + screen_height))
+    
+    in_screen_col = (column >= screen_start_column and 
+                    column < (screen_start_column + screen_width_bytes))
+    
+    # Determine if we need to draw screen content or border
+    if in_screen_line and in_screen_col:
+        # Active screen area
+        screen_line = line - screen_start_line
+        screen_col = column - screen_start_column
+        
+        # Calculate memory addresses for display and attribute data
+        # Display address calculation
+        display_addr = 0x4000
+        display_addr |= ((screen_line & 0xC0) << 5)  # Which third of the screen (0-2)
+        display_addr |= ((screen_line & 0x07) << 8)  # Which character cell row (0-7)
+        display_addr |= ((screen_line & 0x38) << 2)  # Remaining bits (which row of character cells)
+        display_addr |= screen_col & 0b00011111      # 5 bits of X (0-31)
+        
+        # Attribute address calculation
+        attr_addr = 0x5800 + ((screen_line >> 3) * 32) + screen_col
+        
+        # Read display and attribute bytes from memory
+        display_byte = ram[display_addr]
+        attr_byte = ram[attr_addr]
+    else:
+        # Border area
+        display_byte = 0x00
+        attr_byte = (border_color << 3)  # Border color as paper
+    
+    # Now render the pixels
     # Adjust for top blanking
-    line -= top_blanking
+    adjusted_line = line - top_blanking
     
     # Interlace fields (odd/even lines)
-    line = line * 2 + (1 if odd_field else 0)
+    offset_y = adjusted_line * 2 + (1 if odd_field else 0)
     
     # Calculate pixel offset
-    offset_y = line
     offset_x = column * 8
     
     # Calculate bleed line (for phosphor effect)
@@ -241,23 +215,31 @@ def update_pixels_jit(pixels, line, column, display_byte, attr_byte,
     paper_color = rgba_color_table[paper]
     ink_color = rgba_color_table[ink]
     
+    # Precompute pixel bleed colors
+    if not bright:
+        # 50% brightness for non-bright colors
+        bleed_paper = ((paper_color >> 1) & 0x7F7F7F7F) | 0x000000FF
+        bleed_ink = ((ink_color >> 1) & 0x7F7F7F7F) | 0x000000FF
+    else:
+        # 84% brightness for bright colors (mimics phosphor persistence)
+        bleed_paper = (((paper_color >> 3) & 0x07070707) * 27) | 0x000000FF
+        bleed_ink = (((ink_color >> 3) & 0x07070707) * 27) | 0x000000FF
+    
     # Update 8 pixels (MSB is leftmost)
     for bit in range(7, -1, -1):
         pixel_set = (display_byte & (1 << bit)) != 0
-        color = ink_color if pixel_set else paper_color
-        
-        # Apply pixel to main scanline
         pixel_x = offset_x + (7 - bit)
-        pixels[offset_y, pixel_x] = ((pixels[offset_y, pixel_x] >> 2) & 0x3F3F3F3F) | color
         
-        # Apply bleed effect to adjacent scanline
-        if not bright:
-            # 50% brightness for non-bright colors
-            bleed_color = ((color >> 1) & 0x7F7F7F7F) | 0x000000FF
+        # Apply pixel to main scanline and adjacent scanline
+        if pixel_set:
+            color = ink_color
+            bleed_color = bleed_ink
         else:
-            # 84% brightness for bright colors (mimics phosphor persistence)
-            bleed_color = (((color >> 3) & 0x07070707) * 27) | 0x000000FF
+            color = paper_color
+            bleed_color = bleed_paper
             
+        # Apply fading to existing pixel and add new color
+        pixels[offset_y, pixel_x] = ((pixels[offset_y, pixel_x] >> 2) & 0x3F3F3F3F) | color
         pixels[bleed_y, pixel_x] = ((pixels[bleed_y, pixel_x] >> 2) & 0x3F3F3F3F) | bleed_color
 
 
@@ -762,10 +744,29 @@ class ULA(IODevice):
     
     def tick(self):
         """Process one T-state of ULA operation"""
+        # # Initialize timings dict if it doesn't exist
+        # if not hasattr(self, 'tick_timings'):
+        #     self.tick_timings = {
+        #         'cpu_tick': 0.0,
+        #         'debug_checks': 0.0,
+        #         'screen_updates': 0.0,
+        #         'cpu_transact': 0.0,
+        #         'interrupt_handling': 0.0,
+        #         'line_position_updates': 0.0,
+        #         'total': 0.0,
+        #         'count': 0
+        #     }
+        #     self.timing_report_interval = 100000  # Report every 100k ticks
+        
+        # tick_start = time.time()
+        
         # First tick the CPU
+        # cpu_start = time.time()
         self.cpu.tick()
+        # self.tick_timings['cpu_tick'] += time.time() - cpu_start
         
         # Check for interrupt-related state immediately after CPU tick
+        # debug_start = time.time()
         if DEBUG_ENABLED:
             # Debug code for interrupt and CPU state tracking
             if self.cpu.z80.is_m1() and self.cpu.z80.is_iorq():
@@ -811,52 +812,46 @@ class ULA(IODevice):
                         # Not in the main loop, print PC change
                         # print(f"PC changed: 0x{self.last_pc:04X} -> 0x{self.cpu.z80.pc:04X}")
                         self.in_main_loop = False
+        # self.tick_timings['debug_checks'] += time.time() - debug_start
         
         # Always track last PC for debug mode, but without conditional overhead
         # This keeps behavior consistent between debug and non-debug modes
         self.last_pc = self.cpu.z80.pc
         
         # Check if we're in the visible (non-blanking) area
+        # screen_start = time.time()
+        
+        # Precalculate values used in conditionals
         visible = (self.line >= CRT.TOP_BLANKING and 
                   self.line < (CRT.FIELD_LINES - CRT.BOTTOM_BLANKING))
+        active_display_area = self.line_cycle < (CRT.COLUMNS * 4)
+        column_update_needed = self.line_cycle % 4 == 0
                   
-        if visible and self.line_cycle < (CRT.COLUMNS * 4):
-            # Only process during active display time
-            # Every 4 cycles we output 8 pixels
-            in_screen_line = (self.line >= self.SCREEN_START_LINE and 
-                             self.line < (self.SCREEN_START_LINE + self.SCREEN_HEIGHT))
-                             
-            if self.line_cycle % 4 == 0:
-                self.current_column = self.line_cycle // 4
-                in_screen_col = (self.current_column >= self.SCREEN_START_COLUMN and 
-                                self.current_column < (self.SCREEN_START_COLUMN + self.SCREEN_WIDTH_BYTES))
-                                
-                if in_screen_line and in_screen_col:
-                    # We're in the active screen area - display pixel data from memory
-                    screen_line = self.line - self.SCREEN_START_LINE
-                    screen_col = self.current_column - self.SCREEN_START_COLUMN
-                    
-                    # Calculate memory addresses for display and attribute data
-                    display_addr = self.memory.calculate_display_address(screen_line, screen_col)
-                    attr_addr = self.memory.calculate_attr_address(screen_line, screen_col)
-                    
-                    # Read display and attribute bytes from memory
-                    display_byte = self.memory.read(display_addr)
-                    attr_byte = self.memory.read(attr_addr)
-                    
-                    # Update the display
-                    self.crt.update_pixels(self.line, self.current_column, display_byte, attr_byte)
-                else:
-                    # In border area - display border color
-                    border_attr = (self.border_color << 3)  # Border color as paper
-                    self.crt.update_pixels(self.line, self.current_column, 0x00, border_attr)
+        # Combine all conditions to avoid unnecessary checks
+        if visible and active_display_area and column_update_needed:
+            self.current_column = self.line_cycle // 4
+            
+            # Use the fully optimized JIT function for all screen updates
+            screen_update_full_jit(
+                self.crt.pixels, self.memory.ram,
+                self.line, self.current_column, self.border_color,
+                CRT.TOP_BLANKING, CRT.FIELD_LINES - CRT.BOTTOM_BLANKING, CRT.TOTAL_WIDTH, CRT.CRT_LINES,
+                self.SCREEN_START_LINE, self.SCREEN_HEIGHT, self.SCREEN_START_COLUMN, self.SCREEN_WIDTH_BYTES,
+                self.crt.odd_field, self.crt.flash_inverted, self.crt.rgba_color_table
+            )
+        # self.tick_timings['screen_updates'] += time.time() - screen_start
         
+        # # Process memory and I/O transactions
+        # transact_start = time.time()
         self.cpu.transact()
+        # self.tick_timings['cpu_transact'] += time.time() - transact_start
         
         # Update position counters
+        # line_start = time.time()
         self.line_cycle += 1
         
         # Generate interrupts at the start of the frame
+        # interrupt_start = time.time()
         if self.line == 0 and self.line_cycle == self.BORDER_T_STATES:
             # Generate CPU interrupt
             if DEBUG_ENABLED:
@@ -869,6 +864,7 @@ class ULA(IODevice):
                 print(f"ULA: Ending interrupt at line={self.line}, cycle={self.line_cycle}")
                 print(f"ULA: CPU state before ending interrupt: {self.cpu.get_state_summary()}")
             self.cpu.interrupt(False)
+        # self.tick_timings['interrupt_handling'] += time.time() - interrupt_start
             
         # Check if we've reached the end of a line
         if self.line_cycle >= T_STATES_PER_LINE:
@@ -887,6 +883,32 @@ class ULA(IODevice):
                 
                 # Toggle interlace field
                 self.crt.toggle_field()
+        # self.tick_timings['line_position_updates'] += time.time() - line_start
+        
+        # # Update total and count
+        # total_time = time.time() - tick_start
+        # self.tick_timings['total'] += total_time
+        # self.tick_timings['count'] += 1
+        
+        # # Periodically report timing statistics
+        # if self.tick_timings['count'] % self.timing_report_interval == 0:
+        #     total = self.tick_timings['total'] if self.tick_timings['total'] > 0 else 1
+        #     count = self.tick_timings['count']
+            
+        #     print("\nULA Tick Timing Statistics (average over last {0:,} ticks):".format(count))
+        #     for key, value in self.tick_timings.items():
+        #         if key != 'total' and key != 'count':
+        #             pct = (value / total) * 100
+        #             avg_us = (value / count) * 1_000_000  # Convert to microseconds
+        #             print(f"  {key}: {pct:.2f}% ({avg_us:.6f}µs per tick)")
+            
+        #     print(f"  Total time: {total:.6f}s ({(total/count)*1_000_000:.6f}µs per tick)")
+        #     print(f"  Ticks processed: {count:,}")
+            
+        #     # Reset timings for next interval
+        #     for key in self.tick_timings:
+        #         self.tick_timings[key] = 0.0
+        #     self.tick_timings['count'] = 0
     
     def set_border_color(self, color):
         """Set the border color (0-7)"""
@@ -945,8 +967,21 @@ class System:
         start_time = time.time()
         next_refresh_t_state = self.current_t_state + T_STATES_PER_FRAME
         
+        # # Timing statistics
+        # timings = {
+        #     'event_processing': 0.0,
+        #     'emulation': 0.0,
+        #     'fps_calculation': 0.0,
+        #     'screen_refresh': 0.0,
+        #     'sleep': 0.0,
+        #     'total': 0.0
+        # }
+        
         while not quit:
+            # loop_start = time.time()
+            
             # Process SDL events
+            # event_start = time.time()
             while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
                 if event.type == sdl2.SDL_QUIT:
                     quit = True
@@ -971,14 +1006,18 @@ class System:
                     # Pass key release to the keyboard handler
                     scancode = event.key.keysym.scancode
                     self.ula.keyboard.release(scancode)
+            # timings['event_processing'] += time.time() - event_start
             
             # Process a chunk of emulation
+            # emulation_start = time.time()
             target_t_state = self.current_t_state + self.CHUNK_SIZE
             while self.current_t_state < target_t_state:
                 self.ula.tick()
                 self.current_t_state += 1
+            # timings['emulation'] += time.time() - emulation_start
             
             # FPS calculation
+            # fps_start = time.time()
             current_time = time.time()
             self.frame_count += 1
             
@@ -989,18 +1028,35 @@ class System:
                 self.crt.set_title_fps(self.fps)
                 self.frame_count = 0
                 self.last_time = current_time
+            # timings['fps_calculation'] += time.time() - fps_start
             
             # Check if we need to refresh the display
+            # refresh_start = time.time()
             if self.current_t_state >= next_refresh_t_state:
                 self.crt.refresh()
                 next_refresh_t_state += T_STATES_PER_FRAME
+            # timings['screen_refresh'] += time.time() - refresh_start
             
             # Sleep if we're ahead of real time
+            # sleep_start = time.time()
             target_time = start_time + ((self.current_t_state * 1_000_000) / CLOCK_RATE / 1_000_000)
             time_ahead = target_time - time.time()
             
             if time_ahead > 0.001:  # More than 1ms ahead
                 time.sleep(time_ahead - 0.001)  # Leave 1ms margin
+            # timings['sleep'] += time.time() - sleep_start
+            
+            # timings['total'] += time.time() - loop_start
+            
+            # # Print timing stats every 100 frames
+            # if self.frame_count % 100 == 0:
+            #     total = timings['total'] if timings['total'] > 0 else 1
+            #     print("\nTiming percentages:")
+            #     for key, value in timings.items():
+            #         if key != 'total':
+            #             pct = (value / total) * 100
+            #             print(f"  {key}: {pct:.2f}% ({value:.6f}s)")
+            #     print(f"  Total time: {total:.6f}s")
     
     def load_scr(self, filename):
         """Load a .scr screen file"""
@@ -1186,4 +1242,28 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())
+    # import cProfile
+    # import pstats
+    # from io import StringIO
+    
+    # # Create a profile object and run the main function
+    # profiler = cProfile.Profile()
+    # result = profiler.runcall(main)
+    
+    # # Create a string buffer and sort stats by cumulative time
+    # s = StringIO()
+    # ps = pstats.Stats(profiler, stream=s).sort_stats('cumtime')
+    
+    # # Print only the top 20 functions to the console
+    # ps.print_stats(20)
+    # print(s.getvalue())
+    
+    # # Write full stats to a file for later review
+    # with open('profiling_stats.txt', 'w') as f:
+    #     ps = pstats.Stats(profiler, stream=f).sort_stats('cumtime')
+    #     ps.print_stats()
+    
+    # print("\nFull profiling data saved to 'profiling_stats.txt'")
+    
+    # sys.exit(result)
