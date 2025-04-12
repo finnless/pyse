@@ -2,6 +2,10 @@
 
 PYSE is a ZX Spectrum emulator written in Python, designed to accurately emulate the classic 48K ZX Spectrum home computer.
 
+![](resources/pyse-usage1.png)
+
+![](resources/pyse-usage2.png)
+
 ## Features
 
 - Full Z80 CPU emulation
