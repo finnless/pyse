@@ -126,9 +126,9 @@ class CRT:
         """Toggle the flash state for FLASH attribute"""
         self.flash_inverted = not self.flash_inverted
 
-    def set_title_fps(self, fps):
-        """Update window title with FPS information"""
-        title = f"{self.base_title} - FPS: {fps:.1f}"
+    def set_title_stats(self, fps, refresh_rate):
+        """Update window title with FPS and Refresh Rate information"""
+        title = f"{self.base_title} - FPS: {fps:.1f} | Refresh: {refresh_rate:.1f} Hz"
         sdl2.SDL_SetWindowTitle(self.window, title.encode())
 
     def toggle_field(self):
@@ -732,6 +732,10 @@ class System:
         self.last_time = time.time()
         self.fps_update_interval = 0.5
         
+        # Refresh rate tracking variables
+        self.refresh_rate = 0.0
+        self.last_refresh_time = time.time() # Initialize with current time
+        
         # Do an initial refresh to display the screen immediately
         self.crt.refresh()
 
@@ -742,6 +746,9 @@ class System:
         # Track both virtual and real time
         start_time = time.time()
         next_refresh_t_state = self.current_t_state + T_STATES_PER_FRAME
+        
+        # Initialize last_refresh_time here as well to align with start
+        self.last_refresh_time = start_time 
         
         while not quit:
             # Process SDL events
@@ -781,13 +788,21 @@ class System:
             elapsed = current_time - self.last_time
             if elapsed >= self.fps_update_interval:
                 self.fps = self.frame_count / elapsed
-                self.crt.set_title_fps(self.fps)
+                # Update title with both FPS and Refresh Rate
+                self.crt.set_title_stats(self.fps, self.refresh_rate) 
                 self.frame_count = 0
                 self.last_time = current_time
             
-            # Check if we need to refresh the display
+            # Check if we need to refresh the display (emulated frame complete)
             if self.current_t_state >= next_refresh_t_state:
                 self.crt.refresh()
+                
+                # Calculate actual refresh rate based on time between refreshes
+                now = time.time()
+                delta_refresh = now - self.last_refresh_time
+                self.refresh_rate = 1.0 / delta_refresh if delta_refresh > 0 else 0.0
+                self.last_refresh_time = now
+                
                 next_refresh_t_state += T_STATES_PER_FRAME
             
             # Sleep if we're ahead of real time
