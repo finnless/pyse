@@ -35,22 +35,64 @@ except ImportError:
     print("Please run 'python generate_bindings.py' first.")
     sys.exit(1)
 
-# --- Load the shared library ---
-lib_path = None
-if sys.platform == 'win32':
-    lib_path = os.path.join('.', 'z80.dll')
-elif sys.platform == 'darwin':
-    lib_path = os.path.join('.', 'libz80.dylib')
-else: # Linux etc
-    lib_path = os.path.join('.', 'libz80.so')
-
-if not os.path.exists(lib_path):
-    raise ImportError(f"Cannot find compiled Z80 library at {lib_path}")
-
 try:
-    z80_lib = ctypes.CDLL(lib_path)
-except OSError as e:
-     raise OSError(f"Error loading library {lib_path}: {e}")
+    import importlib.resources
+    _HAVE_IMPORTLIB_RESOURCES = True
+except ImportError:
+    _HAVE_IMPORTLIB_RESOURCES = False
+
+# Determine expected library filename
+if sys.platform == 'win32':
+    lib_filename = 'z80.dll'
+elif sys.platform == 'darwin':
+    lib_filename = 'libz80.dylib'
+else: # Linux etc
+    lib_filename = 'libz80.so'
+
+z80_lib = None
+load_error = None
+
+# --- Load the shared library ---
+# TODO: This loading mechanism needs refinement for proper packaging.
+# The preferred method is using importlib.resources to load the library
+# bundled with the package. The fallback using __file__ is for development
+# or when not installed as a package.
+
+# Attempt 1: Load using importlib.resources (preferred for installed packages)
+if _HAVE_IMPORTLIB_RESOURCES:
+    try:
+        package_path = importlib.resources.files('pyz80')
+        lib_resource = package_path.joinpath(lib_filename)
+        with importlib.resources.as_file(lib_resource) as lib_fs_path:
+            # Convert Path object to string for CDLL
+            z80_lib = ctypes.CDLL(str(lib_fs_path))
+    except Exception as e: # Catch broad exceptions like PackageNotFoundError, FileNotFoundError
+        load_error = f"importlib.resources failed: {e}"
+        z80_lib = None # Ensure it's None if this fails
+
+# Attempt 2: Fallback using relative path (for development/non-packaged use)
+if z80_lib is None:
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        lib_path = os.path.join(script_dir, lib_filename)
+        if not os.path.exists(lib_path):
+            # Raise specific error if fallback path also doesn't exist
+            raise ImportError(f"Cannot find compiled Z80 library via fallback path: {lib_path}")
+        z80_lib = ctypes.CDLL(lib_path)
+        # Clear previous error if fallback succeeded
+        load_error = None
+    except Exception as e:
+         # Keep the original error if importlib.resources failed,
+         # otherwise store the fallback error.
+         if load_error is None:
+             load_error = f"Fallback loading failed: {e}"
+
+# Final check: If loading failed by both methods
+if z80_lib is None:
+    raise ImportError(f"Failed to load Z80 library '{lib_filename}'. "
+                      f"Attempted importlib.resources ({'available' if _HAVE_IMPORTLIB_RESOURCES else 'unavailable'}) "
+                      f"and fallback path. Last error: {load_error}")
+
 
 # --- Setup function prototypes using the generated function ---
 setup_prototypes(z80_lib)

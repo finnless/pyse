@@ -14,16 +14,9 @@ pyz80_dir = os.path.join(script_dir, 'pyz80')
 if pyz80_dir not in sys.path:
     sys.path.insert(0, pyz80_dir)
 
-# TODO REMOVE THIS GARBAGE. change pyz80 to an installed package.
-os.chdir(os.path.join(os.path.dirname(__file__), 'pyz80'))
-
 # Import Z80 CPU
 from pyz80 import Z80
 from _z80_bindings import Z80_INT, Z80_M1, Z80_MREQ, Z80_IORQ, Z80_RD, Z80_WR, Z80_SET_DATA, Z80_PIN_D0
-
-# TODO REMOVE THIS GARBAGE
-# Change back to original directory
-os.chdir(os.path.dirname(__file__))
 
 # -----------------------------------------------------------------------------
 # Timing constants (all in T-states)
