@@ -626,10 +626,6 @@ class ULA(IODevice):
         # First tick the CPU
         self.cpu.tick()
         
-        # Always track last PC for debug mode, but without conditional overhead
-        # This keeps behavior consistent between debug and non-debug modes
-        self.last_pc = self.cpu.z80.pc
-        
         # Check if we're in the visible (non-blanking) area
         
         # Precalculate values used in conditionals
